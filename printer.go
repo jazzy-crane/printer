@@ -485,6 +485,9 @@ func (p *Printer) Close() error {
 	return ClosePrinter(p.h)
 }
 
+// NotifyInfoData is a golang friendly PRINTER_NOTIFY_INFO_DATA
+// notably the union is now expressed as an interface{} type
+// See https://docs.microsoft.com/en-us/windows/desktop/printdocs/printer-notify-info-data
 type NotifyInfoData struct {
 	Type  uint16 // one of PRINTER_NOTIFY_TYPE or JOB_NOTIFY_TYPE
 	Field uint16 // JOB_NOTIFY_FIELD_* or PRINTER_NOTIFY_FIELD_* depending on the above
@@ -493,6 +496,8 @@ type NotifyInfoData struct {
 	Value interface{}
 }
 
+// NotifyInfo is a golang friendly PRINTER_NOTIFY_INFO struct
+// see https://docs.microsoft.com/en-us/windows/desktop/printdocs/printer-notify-info
 type NotifyInfo struct {
 	Version int
 	Flags   uint
@@ -500,6 +505,8 @@ type NotifyInfo struct {
 	Data    []*NotifyInfoData
 }
 
+// ToNotifyInfoData converts the C-like PRINTER_NOTIFY_INFO_DATA struct to a
+// more Golang friendly NotifyInfoData
 func (pnid *PRINTER_NOTIFY_INFO_DATA) ToNotifyInfoData() *NotifyInfoData {
 	p := &NotifyInfoData{
 		Type:  pnid.Type,
@@ -546,6 +553,8 @@ func (pnid *PRINTER_NOTIFY_INFO_DATA) ToNotifyInfoData() *NotifyInfoData {
 	return p
 }
 
+// ToNotifyInfo converts the C-like PRINTER_NOTIFY_INFO struct to a
+// more Golang friendly NotifyInfo
 func (pni *PRINTER_NOTIFY_INFO) ToNotifyInfo() *NotifyInfo {
 	p := &NotifyInfo{
 		Version: int(pni.Version),
@@ -560,10 +569,14 @@ func (pni *PRINTER_NOTIFY_INFO) ToNotifyInfo() *NotifyInfo {
 	return p
 }
 
+// ChangeNotificationHandle wraps the change notification object created by Printer::ChangeNotifications
 type ChangeNotificationHandle struct {
 	h syscall.Handle
 }
 
+// ChangeNotifications gets a handle that can be used to query for spooler notifications.
+// It effectively wraps FindFirstPrinterChangeNotification
+// see https://docs.microsoft.com/en-us/windows/desktop/printdocs/findfirstprinterchangenotification
 func (p *Printer) ChangeNotifications(filter uint32, options uint32, printerNotifyOptions *PRINTER_NOTIFY_OPTIONS) (*ChangeNotificationHandle, error) {
 	h, err := FindFirstPrinterChangeNotification(p.h, filter, options, printerNotifyOptions)
 	if err != nil {
@@ -575,6 +588,9 @@ func (p *Printer) ChangeNotifications(filter uint32, options uint32, printerNoti
 	}, nil
 }
 
+// Next retrieves information about the most recent change notification for a change notification object associated with a printer or print server
+// It effectively wraps FindNextPrinterChangeNotification
+// see https://docs.microsoft.com/en-us/windows/desktop/printdocs/findnextprinterchangenotification
 func (c *ChangeNotificationHandle) Next(printerNotifyOptions *PRINTER_NOTIFY_OPTIONS) (*NotifyInfo, error) {
 	var cause uint16
 	var notifyInfo *PRINTER_NOTIFY_INFO
@@ -618,10 +634,13 @@ func (c *ChangeNotificationHandle) Next(printerNotifyOptions *PRINTER_NOTIFY_OPT
 	}
 }
 
+// Wait calls WaitForSingleObject on the change notification handle
 func (c *ChangeNotificationHandle) Wait(milliseconds uint32) (uint32, error) {
 	return syscall.WaitForSingleObject(c.h, milliseconds)
 }
 
+// Close closes the change notification handle, wrapping FindClosePrinterChangeNotification
+// see https://docs.microsoft.com/en-us/windows/desktop/printdocs/findcloseprinterchangenotification
 func (c *ChangeNotificationHandle) Close() error {
 	return FindClosePrinterChangeNotification(c.h)
 }

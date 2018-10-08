@@ -6,6 +6,7 @@ import (
 	"syscall"
 )
 
+// JobNotifyAll is a util providing a slice of all JOB_NOTIFY_FIELD_* values
 var JobNotifyAll = []uint16{
 	JOB_NOTIFY_FIELD_PRINTER_NAME,
 	JOB_NOTIFY_FIELD_MACHINE_NAME,
@@ -34,6 +35,7 @@ var JobNotifyAll = []uint16{
 	JOB_NOTIFY_FIELD_REMOTE_JOB_ID,
 }
 
+// JobNotifyFieldToString maps all JOB_NOTIFY_FIELD_* values to a human readable string
 func JobNotifyFieldToString(field uint16) string {
 	switch field {
 	case JOB_NOTIFY_FIELD_PRINTER_NAME:
@@ -112,6 +114,9 @@ func (pni *NotifyInfo) String() string {
 	return buf.String()
 }
 
+// GetNotifications wraps the whole FindFirstPrinterChangeNotification, WaitForSingleObject,
+// FindNextPrinterChangeNotification, FindClosePrinterChangeNotification process and vends notifications out of a channel
+// To finish notifications and cleanup, close the passed in done channel
 func (p *Printer) GetNotifications(done <-chan struct{}, filter uint32, options uint32, printerNotifyOptions *PRINTER_NOTIFY_OPTIONS) (<-chan *NotifyInfo, error) {
 	notificationHandle, err := p.ChangeNotifications(filter, options, printerNotifyOptions)
 	if err != nil {
