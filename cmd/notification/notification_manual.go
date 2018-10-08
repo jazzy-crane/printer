@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"syscall"
 
 	"github.com/jazzy-crane/printer"
 )
@@ -38,9 +37,9 @@ func main() {
 			os.Exit(1)
 		}
 
-		notifications, err := p.FindFirstPrinterChangeNotification(printer.PRINTER_CHANGE_ALL, 0, notifyOptions)
+		notifications, err := p.PrinterChangeNotifications(printer.PRINTER_CHANGE_ALL, 0, notifyOptions)
 		if err != nil {
-			log.Println("Error FindFirstPrinterChangeNotification", err)
+			log.Println("Error PrinterChangeNotifications", err)
 			os.Exit(1)
 		}
 
@@ -49,21 +48,14 @@ func main() {
 			defer p.Close()
 
 			for {
-				rtn, err := pcnh.WaitOnNotification(syscall.INFINITE)
+				pni, err := pcnh.Next(nil)
 				if err != nil {
+					if err != printer.ErrNoNotification {
+						log.Println("Unexpected error from FindNextPrinterChangeNotification", err)
+					}
 					continue
 				}
-
-				if rtn != syscall.WAIT_FAILED {
-					pni, err := pcnh.FindNextPrinterChangeNotification(nil)
-					if err != nil {
-						if err != printer.ErrNoNotification {
-							log.Println("Unexpected error from FindNextPrinterChangeNotification", err)
-						}
-						continue
-					}
-					multiplexed <- pni
-				}
+				multiplexed <- pni
 			}
 		}(p, notifications)
 	}

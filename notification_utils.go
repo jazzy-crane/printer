@@ -113,7 +113,7 @@ func (pni *PrinterNotifyInfo) String() string {
 }
 
 func (p *Printer) GetPrinterNotifications(done <-chan struct{}, filter uint32, options uint32, printerNotifyOptions *PRINTER_NOTIFY_OPTIONS) (<-chan *PrinterNotifyInfo, error) {
-	changeHandle, err := p.FindFirstPrinterChangeNotification(filter, options, printerNotifyOptions)
+	notificationHandle, err := p.PrinterChangeNotifications(filter, options, printerNotifyOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -122,12 +122,12 @@ func (p *Printer) GetPrinterNotifications(done <-chan struct{}, filter uint32, o
 
 	go func() {
 		defer func() {
-			changeHandle.Close()
+			notificationHandle.Close()
 			close(out)
 		}()
 		for {
 			// Ideally this should be syscall.INFINITE, but need to keep waking up to check the done channel
-			rtn, err := changeHandle.WaitOnNotification(500)
+			rtn, err := notificationHandle.Wait(500)
 			if err != nil {
 				continue
 			}
@@ -142,7 +142,7 @@ func (p *Printer) GetPrinterNotifications(done <-chan struct{}, filter uint32, o
 			}
 
 			if rtn != syscall.WAIT_FAILED {
-				pni, err := changeHandle.FindNextPrinterChangeNotification(nil)
+				pni, err := notificationHandle.Next(nil)
 				if err != nil {
 					continue
 				}

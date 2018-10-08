@@ -560,7 +560,7 @@ func (pni *PRINTER_NOTIFY_INFO) ToPrinterNotifyInfo() *PrinterNotifyInfo {
 	return p
 }
 
-func (p *Printer) FindFirstPrinterChangeNotification(filter uint32, options uint32, printerNotifyOptions *PRINTER_NOTIFY_OPTIONS) (*PrinterChangeNotificationHandle, error) {
+func (p *Printer) PrinterChangeNotifications(filter uint32, options uint32, printerNotifyOptions *PRINTER_NOTIFY_OPTIONS) (*PrinterChangeNotificationHandle, error) {
 	h, err := FindFirstPrinterChangeNotification(p.h, filter, options, printerNotifyOptions)
 	if err != nil {
 		return nil, err
@@ -575,7 +575,7 @@ type PrinterChangeNotificationHandle struct {
 	h syscall.Handle
 }
 
-func (pcnh *PrinterChangeNotificationHandle) FindNextPrinterChangeNotification(printerNotifyOptions *PRINTER_NOTIFY_OPTIONS) (*PrinterNotifyInfo, error) {
+func (pcnh *PrinterChangeNotificationHandle) Next(printerNotifyOptions *PRINTER_NOTIFY_OPTIONS) (*PrinterNotifyInfo, error) {
 	var cause uint16
 	var notifyInfo *PRINTER_NOTIFY_INFO
 
@@ -591,6 +591,7 @@ func (pcnh *PrinterChangeNotificationHandle) FindNextPrinterChangeNotification(p
 		FindNextPrinterChangeNotification call that specifies PRINTER_NOTIFY_OPTIONS_REFRESH.
 		*/
 		_ = FreePrinterNotifyInfo(notifyInfo)
+		notifyInfo = nil
 
 		pno := &PRINTER_NOTIFY_OPTIONS{
 			Version: 2,
@@ -617,7 +618,7 @@ func (pcnh *PrinterChangeNotificationHandle) FindNextPrinterChangeNotification(p
 	}
 }
 
-func (pcnh *PrinterChangeNotificationHandle) WaitOnNotification(milliseconds uint32) (uint32, error) {
+func (pcnh *PrinterChangeNotificationHandle) Wait(milliseconds uint32) (uint32, error) {
 	return syscall.WaitForSingleObject(pcnh.h, milliseconds)
 }
 

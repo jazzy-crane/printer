@@ -11,6 +11,14 @@ import (
 	"github.com/jazzy-crane/printer"
 )
 
+var jobNotify = []uint16{
+	printer.JOB_NOTIFY_FIELD_PRINTER_NAME,
+	printer.JOB_NOTIFY_FIELD_MACHINE_NAME,
+	printer.JOB_NOTIFY_FIELD_PORT_NAME,
+	printer.JOB_NOTIFY_FIELD_USER_NAME,
+	printer.JOB_NOTIFY_FIELD_STATUS,
+}
+
 func main() {
 	pnames, err := printer.ReadNames()
 	if err != nil {
@@ -27,8 +35,8 @@ func main() {
 		Count:   1,
 		PTypes: &printer.PRINTER_NOTIFY_OPTIONS_TYPE{
 			Type:    uint16(printer.JOB_NOTIFY_TYPE),
-			Count:   uint32(len(printer.JobNotifyAll)),
-			PFields: &printer.JobNotifyAll[0],
+			Count:   uint32(len(jobNotify)),
+			PFields: &jobNotify[0],
 		},
 	}
 
