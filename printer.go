@@ -102,71 +102,11 @@ type PRINTER_NOTIFY_INFO_DATA struct {
 	NotifyInfo NOTIFY_INFO
 }
 
-func (pnid *PRINTER_NOTIFY_INFO_DATA) ToPrinterNotifyInfoData() *PrinterNotifyInfoData {
-	p := &PrinterNotifyInfoData{
-		Type:  pnid.Type,
-		Field: pnid.Field,
-		ID:    pnid.ID,
-	}
-
-	if pnid.Type == JOB_NOTIFY_TYPE {
-		switch pnid.Field {
-		case JOB_NOTIFY_FIELD_PRINTER_NAME,
-			JOB_NOTIFY_FIELD_MACHINE_NAME,
-			JOB_NOTIFY_FIELD_PORT_NAME,
-			JOB_NOTIFY_FIELD_USER_NAME,
-			JOB_NOTIFY_FIELD_NOTIFY_NAME,
-			JOB_NOTIFY_FIELD_DATATYPE,
-			JOB_NOTIFY_FIELD_PRINT_PROCESSOR,
-			JOB_NOTIFY_FIELD_PARAMETERS,
-			JOB_NOTIFY_FIELD_DRIVER_NAME,
-			JOB_NOTIFY_FIELD_STATUS_STRING,
-			JOB_NOTIFY_FIELD_DOCUMENT:
-			ps := (*[0xffff]uint16)(pnid.NotifyInfo.Dataptr)[:pnid.NotifyInfo.Datasz/2]
-			p.Value = syscall.UTF16ToString(ps)
-		case JOB_NOTIFY_FIELD_STATUS,
-			JOB_NOTIFY_FIELD_PRIORITY,
-			JOB_NOTIFY_FIELD_POSITION,
-			JOB_NOTIFY_FIELD_START_TIME,
-			JOB_NOTIFY_FIELD_UNTIL_TIME,
-			JOB_NOTIFY_FIELD_TIME,
-			JOB_NOTIFY_FIELD_TOTAL_PAGES,
-			JOB_NOTIFY_FIELD_PAGES_PRINTED,
-			JOB_NOTIFY_FIELD_TOTAL_BYTES,
-			JOB_NOTIFY_FIELD_BYTES_PRINTED:
-			p.Value = int(pnid.NotifyInfo.Datasz)
-		case JOB_NOTIFY_FIELD_DEVMODE:
-			// TODO pnid.NotifyInfo.Dataptr is a pointer to a DEVMODE structure that contains device-initialization and environment data for the printer driver.
-		case JOB_NOTIFY_FIELD_SECURITY_DESCRIPTOR:
-			// TODO Not supported according to https://docs.microsoft.com/en-us/windows/desktop/printdocs/printer-notify-info-data , though does seem to be something there
-		case JOB_NOTIFY_FIELD_SUBMITTED:
-			// TODO pnid.NotifyInfo.Dataptr is a pointer to a SYSTEMTIME structure that specifies the time when the job was submitted.
-		default:
-		}
-	}
-
-	return p
-}
-
 type PRINTER_NOTIFY_INFO struct {
 	Version uint32
 	Flags   uint32
 	Count   uint32
 	PData   [0xff]PRINTER_NOTIFY_INFO_DATA
-}
-
-func (pni *PRINTER_NOTIFY_INFO) ToPrinterNotifyInfo() *PrinterNotifyInfo {
-	p := &PrinterNotifyInfo{
-		Version: int(pni.Version),
-		Flags:   uint(pni.Flags),
-		Data:    make([]*PrinterNotifyInfoData, pni.Count),
-	}
-
-	for i := 0; i < int(pni.Count); i++ {
-		p.Data[i] = pni.PData[i].ToPrinterNotifyInfoData()
-	}
-
-	return p
 }
 
 const (
@@ -232,9 +172,7 @@ const (
 
 	PRINTER_NOTIFY_TYPE = 0 // TODO: Implement support for this
 	JOB_NOTIFY_TYPE     = 1
-)
 
-const (
 	JOB_STATUS_PAUSED            = 0x00000001 // Job is paused
 	JOB_STATUS_ERROR             = 0x00000002 // An error is associated with the job
 	JOB_STATUS_DELETING          = 0x00000004 // Job is being deleted
@@ -251,6 +189,8 @@ const (
 	JOB_STATUS_RETAINED          = 0x00002000 // Job has been retained in the print queue
 	JOB_STATUS_RENDERING_LOCALLY = 0x00004000 // Job rendering locally on the client
 )
+
+var ErrNoNotification = errors.New("no notification information")
 
 //sys	GetDefaultPrinter(buf *uint16, bufN *uint32) (err error) = winspool.GetDefaultPrinterW
 //sys	ClosePrinter(h syscall.Handle) (err error) = winspool.ClosePrinter
@@ -557,6 +497,66 @@ type PrinterNotifyInfo struct {
 	Data    []*PrinterNotifyInfoData
 }
 
+func (pnid *PRINTER_NOTIFY_INFO_DATA) ToPrinterNotifyInfoData() *PrinterNotifyInfoData {
+	p := &PrinterNotifyInfoData{
+		Type:  pnid.Type,
+		Field: pnid.Field,
+		ID:    pnid.ID,
+	}
+
+	if pnid.Type == JOB_NOTIFY_TYPE {
+		switch pnid.Field {
+		case JOB_NOTIFY_FIELD_PRINTER_NAME,
+			JOB_NOTIFY_FIELD_MACHINE_NAME,
+			JOB_NOTIFY_FIELD_PORT_NAME,
+			JOB_NOTIFY_FIELD_USER_NAME,
+			JOB_NOTIFY_FIELD_NOTIFY_NAME,
+			JOB_NOTIFY_FIELD_DATATYPE,
+			JOB_NOTIFY_FIELD_PRINT_PROCESSOR,
+			JOB_NOTIFY_FIELD_PARAMETERS,
+			JOB_NOTIFY_FIELD_DRIVER_NAME,
+			JOB_NOTIFY_FIELD_STATUS_STRING,
+			JOB_NOTIFY_FIELD_DOCUMENT:
+			ps := (*[0xffff]uint16)(pnid.NotifyInfo.Dataptr)[:pnid.NotifyInfo.Datasz/2]
+			p.Value = syscall.UTF16ToString(ps)
+		case JOB_NOTIFY_FIELD_STATUS,
+			JOB_NOTIFY_FIELD_PRIORITY,
+			JOB_NOTIFY_FIELD_POSITION,
+			JOB_NOTIFY_FIELD_START_TIME,
+			JOB_NOTIFY_FIELD_UNTIL_TIME,
+			JOB_NOTIFY_FIELD_TIME,
+			JOB_NOTIFY_FIELD_TOTAL_PAGES,
+			JOB_NOTIFY_FIELD_PAGES_PRINTED,
+			JOB_NOTIFY_FIELD_TOTAL_BYTES,
+			JOB_NOTIFY_FIELD_BYTES_PRINTED:
+			p.Value = int(pnid.NotifyInfo.Datasz)
+		case JOB_NOTIFY_FIELD_DEVMODE:
+			// TODO pnid.NotifyInfo.Dataptr is a pointer to a DEVMODE structure that contains device-initialization and environment data for the printer driver.
+		case JOB_NOTIFY_FIELD_SECURITY_DESCRIPTOR:
+			// TODO Not supported according to https://docs.microsoft.com/en-us/windows/desktop/printdocs/printer-notify-info-data , though does seem to be something there
+		case JOB_NOTIFY_FIELD_SUBMITTED:
+			// TODO pnid.NotifyInfo.Dataptr is a pointer to a SYSTEMTIME structure that specifies the time when the job was submitted.
+		default:
+		}
+	}
+
+	return p
+}
+
+func (pni *PRINTER_NOTIFY_INFO) ToPrinterNotifyInfo() *PrinterNotifyInfo {
+	p := &PrinterNotifyInfo{
+		Version: int(pni.Version),
+		Flags:   uint(pni.Flags),
+		Data:    make([]*PrinterNotifyInfoData, pni.Count),
+	}
+
+	for i := 0; i < int(pni.Count); i++ {
+		p.Data[i] = pni.PData[i].ToPrinterNotifyInfoData()
+	}
+
+	return p
+}
+
 func (p *Printer) FindFirstPrinterChangeNotification(filter uint32, options uint32, printerNotifyOptions *PRINTER_NOTIFY_OPTIONS) (*PrinterChangeNotificationHandle, error) {
 	h, err := FindFirstPrinterChangeNotification(p.h, filter, options, printerNotifyOptions)
 	if err != nil {
@@ -571,8 +571,6 @@ func (p *Printer) FindFirstPrinterChangeNotification(filter uint32, options uint
 type PrinterChangeNotificationHandle struct {
 	h syscall.Handle
 }
-
-var ErrNoNotification = errors.New("no notification information")
 
 func (pcnh *PrinterChangeNotificationHandle) FindNextPrinterChangeNotification(printerNotifyOptions *PRINTER_NOTIFY_OPTIONS) (*PrinterNotifyInfo, error) {
 	var cause uint16

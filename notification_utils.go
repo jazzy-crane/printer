@@ -1,6 +1,9 @@
 package printer
 
-import "fmt"
+import (
+	"bytes"
+	"fmt"
+)
 
 var JobNotifyAll = []uint16{
 	JOB_NOTIFY_FIELD_PRINTER_NAME,
@@ -95,4 +98,15 @@ func (pnid *PrinterNotifyInfoData) String() string {
 	}
 
 	return fmt.Sprintf("%#v\n", pnid)
+}
+
+func (pni *PrinterNotifyInfo) String() string {
+	var buf bytes.Buffer
+
+	fmt.Fprintf(&buf, "PrinterNotifyInfo cause 0x%X\n", pni.Cause)
+	for _, item := range pni.Data {
+		fmt.Fprintf(&buf, "%s\n", item.String())
+	}
+
+	return buf.String()
 }

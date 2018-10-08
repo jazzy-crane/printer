@@ -68,9 +68,6 @@ func main() {
 	}
 
 	for notification := range multiplexed {
-		fmt.Printf("\nNew print notification (cause 0x%X)\n", notification.Cause)
-		for _, item := range notification.Data {
-			fmt.Println(item)
-		}
+		fmt.Printf("\n%s\n", notification)
 	}
 }
