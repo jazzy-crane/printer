@@ -17,7 +17,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	multiplexed := make(chan *printer.PrinterNotifyInfo)
+	multiplexed := make(chan *printer.NotifyInfo)
 
 	notifyOptions := &printer.PRINTER_NOTIFY_OPTIONS{
 		Version: 2,
@@ -37,13 +37,13 @@ func main() {
 			os.Exit(1)
 		}
 
-		notifications, err := p.PrinterChangeNotifications(printer.PRINTER_CHANGE_ALL, 0, notifyOptions)
+		notifications, err := p.ChangeNotifications(printer.PRINTER_CHANGE_ALL, 0, notifyOptions)
 		if err != nil {
-			log.Println("Error PrinterChangeNotifications", err)
+			log.Println("Error ChangeNotifications", err)
 			os.Exit(1)
 		}
 
-		go func(p *printer.Printer, pcnh *printer.PrinterChangeNotificationHandle) {
+		go func(p *printer.Printer, pcnh *printer.ChangeNotificationHandle) {
 			defer pcnh.Close()
 			defer p.Close()
 
@@ -51,7 +51,7 @@ func main() {
 				pni, err := pcnh.Next(nil)
 				if err != nil {
 					if err != printer.ErrNoNotification {
-						log.Println("Unexpected error from FindNextPrinterChangeNotification", err)
+						log.Println("Unexpected error from ChangeNotificationHandle::Next", err)
 					}
 					continue
 				}

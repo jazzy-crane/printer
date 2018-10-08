@@ -91,7 +91,7 @@ func JobNotifyFieldToString(field uint16) string {
 	return "<UNKNOWN>"
 }
 
-func (pnid *PrinterNotifyInfoData) String() string {
+func (pnid *NotifyInfoData) String() string {
 	if pnid.Type == JOB_NOTIFY_TYPE {
 		return fmt.Sprintf("Job #%d %s: %v", pnid.ID, JobNotifyFieldToString(pnid.Field), pnid.Value)
 	} else if pnid.Type == PRINTER_NOTIFY_TYPE {
@@ -101,10 +101,10 @@ func (pnid *PrinterNotifyInfoData) String() string {
 	return fmt.Sprintf("%#v\n", pnid)
 }
 
-func (pni *PrinterNotifyInfo) String() string {
+func (pni *NotifyInfo) String() string {
 	var buf bytes.Buffer
 
-	fmt.Fprintf(&buf, "PrinterNotifyInfo cause 0x%X\n", pni.Cause)
+	fmt.Fprintf(&buf, "NotifyInfo cause 0x%X\n", pni.Cause)
 	for _, item := range pni.Data {
 		fmt.Fprintf(&buf, "%s\n", item.String())
 	}
@@ -112,13 +112,13 @@ func (pni *PrinterNotifyInfo) String() string {
 	return buf.String()
 }
 
-func (p *Printer) GetPrinterNotifications(done <-chan struct{}, filter uint32, options uint32, printerNotifyOptions *PRINTER_NOTIFY_OPTIONS) (<-chan *PrinterNotifyInfo, error) {
-	notificationHandle, err := p.PrinterChangeNotifications(filter, options, printerNotifyOptions)
+func (p *Printer) GetNotifications(done <-chan struct{}, filter uint32, options uint32, printerNotifyOptions *PRINTER_NOTIFY_OPTIONS) (<-chan *NotifyInfo, error) {
+	notificationHandle, err := p.ChangeNotifications(filter, options, printerNotifyOptions)
 	if err != nil {
 		return nil, err
 	}
 
-	out := make(chan *PrinterNotifyInfo)
+	out := make(chan *NotifyInfo)
 
 	go func() {
 		defer func() {

@@ -26,7 +26,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	multiplexed := make(chan *printer.PrinterNotifyInfo)
+	multiplexed := make(chan *printer.NotifyInfo)
 	done := make(chan struct{})
 
 	notifyOptions := &printer.PRINTER_NOTIFY_OPTIONS{
@@ -48,13 +48,13 @@ func main() {
 			os.Exit(1)
 		}
 
-		n, err := p.GetPrinterNotifications(done, printer.PRINTER_CHANGE_ALL, 0, notifyOptions)
+		n, err := p.GetNotifications(done, printer.PRINTER_CHANGE_ALL, 0, notifyOptions)
 		if err != nil {
-			log.Println("Error printer::GetPrinterNotifications", pname, err)
+			log.Println("Error printer::GetNotifications", pname, err)
 			os.Exit(1)
 		}
 
-		go func(notifications <-chan *printer.PrinterNotifyInfo) {
+		go func(notifications <-chan *printer.NotifyInfo) {
 			for n := range notifications {
 				multiplexed <- n
 			}

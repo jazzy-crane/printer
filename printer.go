@@ -485,7 +485,7 @@ func (p *Printer) Close() error {
 	return ClosePrinter(p.h)
 }
 
-type PrinterNotifyInfoData struct {
+type NotifyInfoData struct {
 	Type  uint16 // one of PRINTER_NOTIFY_TYPE or JOB_NOTIFY_TYPE
 	Field uint16 // JOB_NOTIFY_FIELD_* or PRINTER_NOTIFY_FIELD_* depending on the above
 	ID    uint32 // if JOB_NOTIFY_TYPE, this is the print job ID
@@ -493,15 +493,15 @@ type PrinterNotifyInfoData struct {
 	Value interface{}
 }
 
-type PrinterNotifyInfo struct {
+type NotifyInfo struct {
 	Version int
 	Flags   uint
 	Cause   uint
-	Data    []*PrinterNotifyInfoData
+	Data    []*NotifyInfoData
 }
 
-func (pnid *PRINTER_NOTIFY_INFO_DATA) ToPrinterNotifyInfoData() *PrinterNotifyInfoData {
-	p := &PrinterNotifyInfoData{
+func (pnid *PRINTER_NOTIFY_INFO_DATA) ToNotifyInfoData() *NotifyInfoData {
+	p := &NotifyInfoData{
 		Type:  pnid.Type,
 		Field: pnid.Field,
 		ID:    pnid.ID,
@@ -546,40 +546,40 @@ func (pnid *PRINTER_NOTIFY_INFO_DATA) ToPrinterNotifyInfoData() *PrinterNotifyIn
 	return p
 }
 
-func (pni *PRINTER_NOTIFY_INFO) ToPrinterNotifyInfo() *PrinterNotifyInfo {
-	p := &PrinterNotifyInfo{
+func (pni *PRINTER_NOTIFY_INFO) ToNotifyInfo() *NotifyInfo {
+	p := &NotifyInfo{
 		Version: int(pni.Version),
 		Flags:   uint(pni.Flags),
-		Data:    make([]*PrinterNotifyInfoData, pni.Count),
+		Data:    make([]*NotifyInfoData, pni.Count),
 	}
 
 	for i := 0; i < int(pni.Count); i++ {
-		p.Data[i] = pni.PData[i].ToPrinterNotifyInfoData()
+		p.Data[i] = pni.PData[i].ToNotifyInfoData()
 	}
 
 	return p
 }
 
-func (p *Printer) PrinterChangeNotifications(filter uint32, options uint32, printerNotifyOptions *PRINTER_NOTIFY_OPTIONS) (*PrinterChangeNotificationHandle, error) {
+type ChangeNotificationHandle struct {
+	h syscall.Handle
+}
+
+func (p *Printer) ChangeNotifications(filter uint32, options uint32, printerNotifyOptions *PRINTER_NOTIFY_OPTIONS) (*ChangeNotificationHandle, error) {
 	h, err := FindFirstPrinterChangeNotification(p.h, filter, options, printerNotifyOptions)
 	if err != nil {
 		return nil, err
 	}
 
-	return &PrinterChangeNotificationHandle{
+	return &ChangeNotificationHandle{
 		h: h,
 	}, nil
 }
 
-type PrinterChangeNotificationHandle struct {
-	h syscall.Handle
-}
-
-func (pcnh *PrinterChangeNotificationHandle) Next(printerNotifyOptions *PRINTER_NOTIFY_OPTIONS) (*PrinterNotifyInfo, error) {
+func (c *ChangeNotificationHandle) Next(printerNotifyOptions *PRINTER_NOTIFY_OPTIONS) (*NotifyInfo, error) {
 	var cause uint16
 	var notifyInfo *PRINTER_NOTIFY_INFO
 
-	err := FindNextPrinterChangeNotification(pcnh.h, &cause, nil, &notifyInfo)
+	err := FindNextPrinterChangeNotification(c.h, &cause, nil, &notifyInfo)
 	if err != nil {
 		return nil, err
 	}
@@ -600,14 +600,14 @@ func (pcnh *PrinterChangeNotificationHandle) Next(printerNotifyOptions *PRINTER_
 			PTypes:  nil,
 		}
 
-		err := FindNextPrinterChangeNotification(pcnh.h, &cause, pno, &notifyInfo)
+		err := FindNextPrinterChangeNotification(c.h, &cause, pno, &notifyInfo)
 		if err != nil {
 			return nil, err
 		}
 	}
 
 	if notifyInfo != nil {
-		pni := notifyInfo.ToPrinterNotifyInfo()
+		pni := notifyInfo.ToNotifyInfo()
 		pni.Cause = uint(cause)
 
 		_ = FreePrinterNotifyInfo(notifyInfo)
@@ -618,10 +618,10 @@ func (pcnh *PrinterChangeNotificationHandle) Next(printerNotifyOptions *PRINTER_
 	}
 }
 
-func (pcnh *PrinterChangeNotificationHandle) Wait(milliseconds uint32) (uint32, error) {
-	return syscall.WaitForSingleObject(pcnh.h, milliseconds)
+func (c *ChangeNotificationHandle) Wait(milliseconds uint32) (uint32, error) {
+	return syscall.WaitForSingleObject(c.h, milliseconds)
 }
 
-func (pcnh *PrinterChangeNotificationHandle) Close() error {
-	return FindClosePrinterChangeNotification(pcnh.h)
+func (c *ChangeNotificationHandle) Close() error {
+	return FindClosePrinterChangeNotification(c.h)
 }
