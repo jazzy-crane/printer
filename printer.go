@@ -173,6 +173,9 @@ const (
 	PRINTER_NOTIFY_TYPE = 0 // TODO: Implement support for this
 	JOB_NOTIFY_TYPE     = 1
 
+	PRINTER_NOTIFY_INFO_DISCARDED  = 1
+	PRINTER_NOTIFY_OPTIONS_REFRESH = 1
+
 	JOB_STATUS_PAUSED            = 0x00000001 // Job is paused
 	JOB_STATUS_ERROR             = 0x00000002 // An error is associated with the job
 	JOB_STATUS_DELETING          = 0x00000004 // Job is being deleted
@@ -581,13 +584,28 @@ func (pcnh *PrinterChangeNotificationHandle) FindNextPrinterChangeNotification(p
 		return nil, err
 	}
 
-	if notifyInfo != nil {
+	if notifyInfo != nil && (notifyInfo.Flags&PRINTER_NOTIFY_INFO_DISCARDED) == PRINTER_NOTIFY_INFO_DISCARDED {
 		/* If the PRINTER_NOTIFY_INFO_DISCARDED bit is set in the Flags member of the PRINTER_NOTIFY_INFO structure,
 		an overflow or error occurred, and notifications may have been lost.
 		In this case, no additional notifications will be sent until you make a second
 		FindNextPrinterChangeNotification call that specifies PRINTER_NOTIFY_OPTIONS_REFRESH.
 		*/
+		_ = FreePrinterNotifyInfo(notifyInfo)
 
+		pno := &PRINTER_NOTIFY_OPTIONS{
+			Version: 2,
+			Flags:   PRINTER_NOTIFY_OPTIONS_REFRESH,
+			Count:   0,
+			PTypes:  nil,
+		}
+
+		err := FindNextPrinterChangeNotification(pcnh.h, &cause, pno, &notifyInfo)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if notifyInfo != nil {
 		pni := notifyInfo.ToPrinterNotifyInfo()
 		pni.Cause = uint(cause)
 
