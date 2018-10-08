@@ -6,7 +6,7 @@
 package printer
 
 import (
-	"fmt"
+	"errors"
 	"strings"
 	"syscall"
 	"time"
@@ -155,8 +155,8 @@ type PRINTER_NOTIFY_INFO struct {
 	PData   [0xff]PRINTER_NOTIFY_INFO_DATA
 }
 
-func (pni *PRINTER_NOTIFY_INFO) ToPrinterNotifyInfo() PrinterNotifyInfo {
-	p := PrinterNotifyInfo{
+func (pni *PRINTER_NOTIFY_INFO) ToPrinterNotifyInfo() *PrinterNotifyInfo {
+	p := &PrinterNotifyInfo{
 		Version: int(pni.Version),
 		Flags:   uint(pni.Flags),
 		Data:    make([]*PrinterNotifyInfoData, pni.Count),
@@ -312,7 +312,6 @@ func ReadNames() ([]string, error) {
 
 type Printer struct {
 	h                    syscall.Handle
-	notificationHandle   syscall.Handle
 	notificationsRunning bool
 }
 
@@ -543,79 +542,12 @@ func (p *Printer) Close() error {
 	return ClosePrinter(p.h)
 }
 
-func JobNotifyFieldToString(field uint16) string {
-	switch field {
-	case JOB_NOTIFY_FIELD_PRINTER_NAME:
-		return "Printer name"
-	case JOB_NOTIFY_FIELD_MACHINE_NAME:
-		return "Machine name"
-	case JOB_NOTIFY_FIELD_PORT_NAME:
-		return "Port name"
-	case JOB_NOTIFY_FIELD_USER_NAME:
-		return "User name"
-	case JOB_NOTIFY_FIELD_NOTIFY_NAME:
-		return "Notify name"
-	case JOB_NOTIFY_FIELD_DATATYPE:
-		return "Datatype"
-	case JOB_NOTIFY_FIELD_PRINT_PROCESSOR:
-		return "Print processor"
-	case JOB_NOTIFY_FIELD_PARAMETERS:
-		return "Parameters"
-	case JOB_NOTIFY_FIELD_DRIVER_NAME:
-		return "Driver name"
-	case JOB_NOTIFY_FIELD_DEVMODE:
-		return "Devmode"
-	case JOB_NOTIFY_FIELD_STATUS:
-		return "Status"
-	case JOB_NOTIFY_FIELD_STATUS_STRING:
-		return "Status(string)"
-	case JOB_NOTIFY_FIELD_SECURITY_DESCRIPTOR:
-		return "Security descriptor"
-	case JOB_NOTIFY_FIELD_DOCUMENT:
-		return "Document"
-	case JOB_NOTIFY_FIELD_PRIORITY:
-		return "Priority"
-	case JOB_NOTIFY_FIELD_POSITION:
-		return "Position"
-	case JOB_NOTIFY_FIELD_SUBMITTED:
-		return "Submitted time"
-	case JOB_NOTIFY_FIELD_START_TIME:
-		return "Start time"
-	case JOB_NOTIFY_FIELD_UNTIL_TIME:
-		return "Until time"
-	case JOB_NOTIFY_FIELD_TIME:
-		return "Time since start"
-	case JOB_NOTIFY_FIELD_TOTAL_PAGES:
-		return "Total pages"
-	case JOB_NOTIFY_FIELD_PAGES_PRINTED:
-		return "Pages printed"
-	case JOB_NOTIFY_FIELD_TOTAL_BYTES:
-		return "Total bytes"
-	case JOB_NOTIFY_FIELD_BYTES_PRINTED:
-		return "Bytes printed"
-	case JOB_NOTIFY_FIELD_REMOTE_JOB_ID:
-		return "Remote job id"
-	}
-
-	return "<UNKNOWN>"
-}
-
 type PrinterNotifyInfoData struct {
 	Type  uint16 // one of PRINTER_NOTIFY_TYPE or JOB_NOTIFY_TYPE
 	Field uint16 // JOB_NOTIFY_FIELD_* or PRINTER_NOTIFY_FIELD_* depending on the above
 	ID    uint32 // if JOB_NOTIFY_TYPE, this is the print job ID
 
 	Value interface{}
-}
-
-func (pnid *PrinterNotifyInfoData) String() string {
-	if pnid.Type == JOB_NOTIFY_TYPE {
-		return fmt.Sprintf("Job #%d %s: %v", pnid.ID, JobNotifyFieldToString(pnid.Field), pnid.Value)
-	} else if pnid.Type == PRINTER_NOTIFY_TYPE {
-		return fmt.Sprintf("Printer Field %d Value %v", pnid.Field, pnid.Value)
-	}
-
-	return fmt.Sprintf("%#v\n", pnid)
 }
 
 type PrinterNotifyInfo struct {
@@ -625,92 +557,54 @@ type PrinterNotifyInfo struct {
 	Data    []*PrinterNotifyInfoData
 }
 
-var JobNotifyAll = []uint16{
-	JOB_NOTIFY_FIELD_PRINTER_NAME,
-	JOB_NOTIFY_FIELD_MACHINE_NAME,
-	JOB_NOTIFY_FIELD_PORT_NAME,
-	JOB_NOTIFY_FIELD_USER_NAME,
-	JOB_NOTIFY_FIELD_NOTIFY_NAME,
-	JOB_NOTIFY_FIELD_DATATYPE,
-	JOB_NOTIFY_FIELD_PRINT_PROCESSOR,
-	JOB_NOTIFY_FIELD_PARAMETERS,
-	JOB_NOTIFY_FIELD_DRIVER_NAME,
-	JOB_NOTIFY_FIELD_DEVMODE,
-	JOB_NOTIFY_FIELD_STATUS,
-	JOB_NOTIFY_FIELD_STATUS_STRING,
-	JOB_NOTIFY_FIELD_SECURITY_DESCRIPTOR,
-	JOB_NOTIFY_FIELD_DOCUMENT,
-	JOB_NOTIFY_FIELD_PRIORITY,
-	JOB_NOTIFY_FIELD_POSITION,
-	JOB_NOTIFY_FIELD_SUBMITTED,
-	JOB_NOTIFY_FIELD_START_TIME,
-	JOB_NOTIFY_FIELD_UNTIL_TIME,
-	JOB_NOTIFY_FIELD_TIME,
-	JOB_NOTIFY_FIELD_TOTAL_PAGES,
-	JOB_NOTIFY_FIELD_PAGES_PRINTED,
-	JOB_NOTIFY_FIELD_TOTAL_BYTES,
-	JOB_NOTIFY_FIELD_BYTES_PRINTED,
-	JOB_NOTIFY_FIELD_REMOTE_JOB_ID,
-}
-
-func (p *Printer) StartChangeNotifications(notifyType int, notifyFields []uint16) (<-chan PrinterNotifyInfo, error) {
-	notifications := make(chan PrinterNotifyInfo)
-
-	notifyOptions := &PRINTER_NOTIFY_OPTIONS{
-		Version: 2,
-		Flags:   0,
-		Count:   1,
-		PTypes: &PRINTER_NOTIFY_OPTIONS_TYPE{
-			Type:    uint16(notifyType),
-			Count:   uint32(len(notifyFields)),
-			PFields: &notifyFields[0],
-		},
-	}
-
-	var err error
-	p.notificationHandle, err = FindFirstPrinterChangeNotification(p.h, PRINTER_CHANGE_ALL, 0, notifyOptions)
+func (p *Printer) FindFirstPrinterChangeNotification(filter uint32, options uint32, printerNotifyOptions *PRINTER_NOTIFY_OPTIONS) (*PrinterChangeNotificationHandle, error) {
+	h, err := FindFirstPrinterChangeNotification(p.h, filter, options, printerNotifyOptions)
 	if err != nil {
 		return nil, err
 	}
 
-	p.notificationsRunning = true
-
-	go func() {
-		for {
-			rtn, err := syscall.WaitForSingleObject(p.notificationHandle, syscall.INFINITE)
-			if err != nil {
-				break
-			}
-
-			if !p.notificationsRunning {
-				break
-			}
-
-			if rtn != syscall.WAIT_FAILED {
-				var cause uint16
-				var notifyInfo *PRINTER_NOTIFY_INFO
-				notifyInfo = nil
-
-				err = FindNextPrinterChangeNotification(p.notificationHandle, &cause, nil, &notifyInfo)
-				if err != nil {
-					continue
-				}
-
-				pni := notifyInfo.ToPrinterNotifyInfo()
-				pni.Cause = uint(cause)
-				notifications <- pni
-
-				_ = FreePrinterNotifyInfo(notifyInfo)
-			}
-		}
-
-		close(notifications)
-	}()
-
-	return notifications, nil
+	return &PrinterChangeNotificationHandle{
+		h: h,
+	}, nil
 }
 
-func (p *Printer) EndChangeNotifications() error {
-	p.notificationsRunning = false
-	return FindClosePrinterChangeNotification(p.notificationHandle)
+type PrinterChangeNotificationHandle struct {
+	h syscall.Handle
+}
+
+var ErrNoNotification = errors.New("no notification information")
+
+func (pcnh *PrinterChangeNotificationHandle) FindNextPrinterChangeNotification(printerNotifyOptions *PRINTER_NOTIFY_OPTIONS) (*PrinterNotifyInfo, error) {
+	var cause uint16
+	var notifyInfo *PRINTER_NOTIFY_INFO
+
+	err := FindNextPrinterChangeNotification(pcnh.h, &cause, nil, &notifyInfo)
+	if err != nil {
+		return nil, err
+	}
+
+	if notifyInfo != nil {
+		/* If the PRINTER_NOTIFY_INFO_DISCARDED bit is set in the Flags member of the PRINTER_NOTIFY_INFO structure,
+		an overflow or error occurred, and notifications may have been lost.
+		In this case, no additional notifications will be sent until you make a second
+		FindNextPrinterChangeNotification call that specifies PRINTER_NOTIFY_OPTIONS_REFRESH.
+		*/
+
+		pni := notifyInfo.ToPrinterNotifyInfo()
+		pni.Cause = uint(cause)
+
+		_ = FreePrinterNotifyInfo(notifyInfo)
+
+		return pni, nil
+	} else {
+		return nil, ErrNoNotification
+	}
+}
+
+func (pcnh *PrinterChangeNotificationHandle) WaitOnNotification(milliseconds uint32) (uint32, error) {
+	return syscall.WaitForSingleObject(pcnh.h, milliseconds)
+}
+
+func (pcnh *PrinterChangeNotificationHandle) Close() error {
+	return FindClosePrinterChangeNotification(pcnh.h)
 }
