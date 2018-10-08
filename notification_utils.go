@@ -3,6 +3,7 @@ package printer
 import (
 	"bytes"
 	"fmt"
+	"syscall"
 )
 
 var JobNotifyAll = []uint16{
@@ -109,4 +110,53 @@ func (pni *PrinterNotifyInfo) String() string {
 	}
 
 	return buf.String()
+}
+
+func (p *Printer) GetPrinterNotifications(done <-chan struct{}, filter uint32, options uint32, printerNotifyOptions *PRINTER_NOTIFY_OPTIONS) (<-chan *PrinterNotifyInfo, error) {
+	changeHandle, err := p.FindFirstPrinterChangeNotification(filter, options, printerNotifyOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make(chan *PrinterNotifyInfo)
+
+	go func() {
+		defer func() {
+			changeHandle.Close()
+			close(out)
+		}()
+		for {
+			// Ideally this should be syscall.INFINITE, but need to keep waking up to check the done channel
+			rtn, err := changeHandle.WaitOnNotification(500)
+			if err != nil {
+				continue
+			}
+
+			if rtn == syscall.WAIT_TIMEOUT {
+				select {
+				case <-done:
+					return
+				default:
+					continue
+				}
+			}
+
+			if rtn != syscall.WAIT_FAILED {
+				pni, err := changeHandle.FindNextPrinterChangeNotification(nil)
+				if err != nil {
+					continue
+				}
+
+				select {
+				case out <- pni:
+				case <-done:
+					return
+				}
+			} else {
+				return
+			}
+		}
+	}()
+
+	return out, nil
 }

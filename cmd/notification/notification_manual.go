@@ -1,4 +1,5 @@
-// +build windows
+// +build windows,manual
+
 package main
 
 import (
