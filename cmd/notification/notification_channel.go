@@ -17,6 +17,7 @@ var jobNotify = []uint16{
 	printer.JOB_NOTIFY_FIELD_PORT_NAME,
 	printer.JOB_NOTIFY_FIELD_USER_NAME,
 	printer.JOB_NOTIFY_FIELD_STATUS,
+	printer.JOB_NOTIFY_FIELD_SUBMITTED,
 }
 
 func main() {

@@ -297,6 +297,30 @@ type JobInfo struct {
 	Submitted       time.Time
 }
 
+// systemTimeToTime converts a syscall.Systemtime to a time.Time
+// isUTC indicates if the syscall.Systemtime is in UTC or local time
+// see https://msdn.microsoft.com/en-us/library/windows/desktop/ms724950(v=vs.85).aspx
+// the time.Time is always UTC
+func systemTimeToTime(st *syscall.Systemtime, isUTC bool) time.Time {
+	var loc *time.Location
+	if isUTC {
+		loc = time.UTC
+	} else {
+		loc = time.Local
+	}
+
+	return time.Date(
+		int(st.Year),
+		time.Month(int(st.Month)),
+		int(st.Day),
+		int(st.Hour),
+		int(st.Minute),
+		int(st.Second),
+		int(1000*st.Milliseconds),
+		loc,
+	).UTC()
+}
+
 // Jobs returns information about all print jobs on this printer
 func (p *Printer) Jobs() ([]JobInfo, error) {
 	var bytesNeeded, jobsReturned uint32
@@ -394,16 +418,7 @@ func (p *Printer) Jobs() ([]JobInfo, error) {
 			}
 			pji.Status = strings.TrimRight(pji.Status, ", ")
 		}
-		pji.Submitted = time.Date(
-			int(j.Submitted.Year),
-			time.Month(int(j.Submitted.Month)),
-			int(j.Submitted.Day),
-			int(j.Submitted.Hour),
-			int(j.Submitted.Minute),
-			int(j.Submitted.Second),
-			int(1000*j.Submitted.Milliseconds),
-			time.Local,
-		).UTC()
+		pji.Submitted = systemTimeToTime(&j.Submitted, true)
 		pjs = append(pjs, pji)
 	}
 	return pjs, nil
@@ -527,7 +542,7 @@ func (pnid *PRINTER_NOTIFY_INFO_DATA) ToNotifyInfoData() *NotifyInfoData {
 			JOB_NOTIFY_FIELD_DRIVER_NAME,
 			JOB_NOTIFY_FIELD_STATUS_STRING,
 			JOB_NOTIFY_FIELD_DOCUMENT:
-			ps := (*[0xffff]uint16)(pnid.NotifyInfo.Dataptr)[:pnid.NotifyInfo.Datasz/2]
+			ps := ((*[0xffff]uint16)(pnid.NotifyInfo.Dataptr))[:pnid.NotifyInfo.Datasz/2]
 			p.Value = syscall.UTF16ToString(ps)
 		case JOB_NOTIFY_FIELD_STATUS,
 			JOB_NOTIFY_FIELD_PRIORITY,
@@ -545,7 +560,7 @@ func (pnid *PRINTER_NOTIFY_INFO_DATA) ToNotifyInfoData() *NotifyInfoData {
 		case JOB_NOTIFY_FIELD_SECURITY_DESCRIPTOR:
 			// TODO Not supported according to https://docs.microsoft.com/en-us/windows/desktop/printdocs/printer-notify-info-data , though does seem to be something there
 		case JOB_NOTIFY_FIELD_SUBMITTED:
-			// TODO pnid.NotifyInfo.Dataptr is a pointer to a SYSTEMTIME structure that specifies the time when the job was submitted.
+			p.Value = systemTimeToTime((*syscall.Systemtime)(pnid.NotifyInfo.Dataptr), true)
 		default:
 		}
 	}
