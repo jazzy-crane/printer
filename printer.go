@@ -192,6 +192,16 @@ const (
 	JOB_STATUS_COMPLETE          = 0x00001000 // Job has been delivered to the printer
 	JOB_STATUS_RETAINED          = 0x00002000 // Job has been retained in the print queue
 	JOB_STATUS_RENDERING_LOCALLY = 0x00004000 // Job rendering locally on the client
+
+	JOB_CONTROL_PAUSE             = 1
+	JOB_CONTROL_RESUME            = 2
+	JOB_CONTROL_CANCEL            = 3
+	JOB_CONTROL_RESTART           = 4
+	JOB_CONTROL_DELETE            = 5
+	JOB_CONTROL_SENT_TO_PRINTER   = 6
+	JOB_CONTROL_LAST_PAGE_EJECTED = 7
+	JOB_CONTROL_RETAIN            = 8
+	JOB_CONTROL_RELEASE           = 9
 )
 
 var ErrNoNotification = errors.New("no notification information")
@@ -207,6 +217,8 @@ var ErrNoNotification = errors.New("no notification information")
 //sys	EnumPrinters(flags uint32, name *uint16, level uint32, buf *byte, bufN uint32, needed *uint32, returned *uint32) (err error) = winspool.EnumPrintersW
 //sys	GetPrinterDriver(h syscall.Handle, env *uint16, level uint32, di *byte, n uint32, needed *uint32) (err error) = winspool.GetPrinterDriverW
 //sys	EnumJobs(h syscall.Handle, firstJob uint32, noJobs uint32, level uint32, buf *byte, bufN uint32, bytesNeeded *uint32, jobsReturned *uint32) (err error) = winspool.EnumJobsW
+//sys	GetJob(h syscall.Handle, jobId uint32, level uint32, buf *byte, bufN uint32, bytesNeeded *uint32) (err error) = winspool.GetJobW
+//sys	SetJob(h syscall.Handle, jobId uint32, level uint32, buf *byte, command uint32) (err error) = winspool.SetJobW
 //sys   FindFirstPrinterChangeNotification(h syscall.Handle, filter uint32, options uint32, notifyOptions *PRINTER_NOTIFY_OPTIONS) (rtn syscall.Handle, err error) = winspool.FindFirstPrinterChangeNotification
 //sys   FindNextPrinterChangeNotification(h syscall.Handle, cause *uint16, options *PRINTER_NOTIFY_OPTIONS, info **PRINTER_NOTIFY_INFO) (err error) = winspool.FindNextPrinterChangeNotification
 //sys   FindClosePrinterChangeNotification(h syscall.Handle) (err error) = winspool.FindClosePrinterChangeNotification
@@ -378,6 +390,38 @@ func jobStatusCodeToString(sc uint32) string {
 	return strings.TrimRight(buf.String(), ", ")
 }
 
+func (j *JOB_INFO_1) ToJobInfo() *JobInfo {
+	pji := &JobInfo{
+		JobID:        j.JobID,
+		StatusCode:   j.StatusCode,
+		Priority:     j.Priority,
+		Position:     j.Position,
+		TotalPages:   j.TotalPages,
+		PagesPrinted: j.PagesPrinted,
+	}
+	if j.MachineName != nil {
+		pji.UserMachineName = syscall.UTF16ToString((*[2048]uint16)(unsafe.Pointer(j.MachineName))[:])
+	}
+	if j.UserName != nil {
+		pji.UserName = syscall.UTF16ToString((*[2048]uint16)(unsafe.Pointer(j.UserName))[:])
+	}
+	if j.Document != nil {
+		pji.DocumentName = syscall.UTF16ToString((*[2048]uint16)(unsafe.Pointer(j.Document))[:])
+	}
+	if j.DataType != nil {
+		pji.DataType = syscall.UTF16ToString((*[2048]uint16)(unsafe.Pointer(j.DataType))[:])
+	}
+	if j.Status != nil {
+		pji.Status = syscall.UTF16ToString((*[2048]uint16)(unsafe.Pointer(j.Status))[:])
+	}
+	if strings.TrimSpace(pji.Status) == "" {
+		pji.Status = jobStatusCodeToString(pji.StatusCode)
+	}
+	pji.Submitted = systemTimeToTime(&j.Submitted, true)
+
+	return pji
+}
+
 // Jobs returns information about all print jobs on this printer
 func (p *Printer) Jobs() ([]JobInfo, error) {
 	var bytesNeeded, jobsReturned uint32
@@ -401,36 +445,38 @@ func (p *Printer) Jobs() ([]JobInfo, error) {
 	pjs := make([]JobInfo, 0, jobsReturned)
 	ji := (*[2048]JOB_INFO_1)(unsafe.Pointer(&buf[0]))[:jobsReturned]
 	for _, j := range ji {
-		pji := JobInfo{
-			JobID:        j.JobID,
-			StatusCode:   j.StatusCode,
-			Priority:     j.Priority,
-			Position:     j.Position,
-			TotalPages:   j.TotalPages,
-			PagesPrinted: j.PagesPrinted,
-		}
-		if j.MachineName != nil {
-			pji.UserMachineName = syscall.UTF16ToString((*[2048]uint16)(unsafe.Pointer(j.MachineName))[:])
-		}
-		if j.UserName != nil {
-			pji.UserName = syscall.UTF16ToString((*[2048]uint16)(unsafe.Pointer(j.UserName))[:])
-		}
-		if j.Document != nil {
-			pji.DocumentName = syscall.UTF16ToString((*[2048]uint16)(unsafe.Pointer(j.Document))[:])
-		}
-		if j.DataType != nil {
-			pji.DataType = syscall.UTF16ToString((*[2048]uint16)(unsafe.Pointer(j.DataType))[:])
-		}
-		if j.Status != nil {
-			pji.Status = syscall.UTF16ToString((*[2048]uint16)(unsafe.Pointer(j.Status))[:])
-		}
-		if strings.TrimSpace(pji.Status) == "" {
-			pji.Status = jobStatusCodeToString(pji.StatusCode)
-		}
-		pji.Submitted = systemTimeToTime(&j.Submitted, true)
-		pjs = append(pjs, pji)
+		pjs = append(pjs, *j.ToJobInfo())
 	}
 	return pjs, nil
+}
+
+func (p *Printer) Job(jobId uint32) (*JobInfo, error) {
+	var bytesNeeded uint32
+	buf := make([]byte, 1024)
+	for {
+		err := GetJob(p.h, jobId, 1, &buf[0], uint32(len(buf)), &bytesNeeded)
+		if err == nil {
+			break
+		}
+		if err != syscall.ERROR_INSUFFICIENT_BUFFER {
+			return nil, err
+		}
+		if bytesNeeded <= uint32(len(buf)) {
+			return nil, err
+		}
+		buf = make([]byte, bytesNeeded)
+	}
+
+	ji := (*JOB_INFO_1)(unsafe.Pointer(&buf[0]))
+	return ji.ToJobInfo(), nil
+}
+
+func (p *Printer) SetJob(jobID uint32, jobInfo *JobInfo, command uint32) error {
+	if jobInfo != nil {
+		return errors.New("Not implemented JobInfo -> JOB_INFO_1")
+	}
+
+	return SetJob(p.h, jobID, 0, nil, command)
 }
 
 // DriverInfo returns information about printer p driver.
