@@ -90,7 +90,7 @@ type PRINTER_NOTIFY_OPTIONS struct {
 	PTypes  *PRINTER_NOTIFY_OPTIONS_TYPE
 }
 
-type NOTIFY_INFO struct {
+type NOTIFY_DATA struct {
 	Datasz  uint32
 	Dataptr unsafe.Pointer
 }
@@ -100,7 +100,7 @@ type PRINTER_NOTIFY_INFO_DATA struct {
 	Field      uint16
 	Reserved   uint32
 	ID         uint32
-	NotifyInfo NOTIFY_INFO
+	NotifyData NOTIFY_DATA
 }
 
 type PRINTER_NOTIFY_INFO struct {
@@ -551,7 +551,7 @@ func (pnid *PRINTER_NOTIFY_INFO_DATA) ToNotifyInfoData() *NotifyInfoData {
 			JOB_NOTIFY_FIELD_DRIVER_NAME,
 			JOB_NOTIFY_FIELD_STATUS_STRING,
 			JOB_NOTIFY_FIELD_DOCUMENT:
-			ps := ((*[0xffff]uint16)(pnid.NotifyInfo.Dataptr))[:pnid.NotifyInfo.Datasz/2]
+			ps := ((*[0xffff]uint16)(pnid.NotifyData.Dataptr))[:pnid.NotifyData.Datasz/2]
 			p.Value = syscall.UTF16ToString(ps)
 		case JOB_NOTIFY_FIELD_STATUS,
 			JOB_NOTIFY_FIELD_PRIORITY,
@@ -563,13 +563,13 @@ func (pnid *PRINTER_NOTIFY_INFO_DATA) ToNotifyInfoData() *NotifyInfoData {
 			JOB_NOTIFY_FIELD_PAGES_PRINTED,
 			JOB_NOTIFY_FIELD_TOTAL_BYTES,
 			JOB_NOTIFY_FIELD_BYTES_PRINTED:
-			p.Value = uint32(pnid.NotifyInfo.Datasz)
+			p.Value = uint32(pnid.NotifyData.Datasz)
 		case JOB_NOTIFY_FIELD_DEVMODE:
-			// TODO pnid.NotifyInfo.Dataptr is a pointer to a DEVMODE structure that contains device-initialization and environment data for the printer driver.
+			// TODO pnid.NotifyData.Dataptr is a pointer to a DEVMODE structure that contains device-initialization and environment data for the printer driver.
 		case JOB_NOTIFY_FIELD_SECURITY_DESCRIPTOR:
 			// TODO Not supported according to https://docs.microsoft.com/en-us/windows/desktop/printdocs/printer-notify-info-data , though does seem to be something there
 		case JOB_NOTIFY_FIELD_SUBMITTED:
-			p.Value = systemTimeToTime((*syscall.Systemtime)(pnid.NotifyInfo.Dataptr), true)
+			p.Value = systemTimeToTime((*syscall.Systemtime)(pnid.NotifyData.Dataptr), true)
 		default:
 		}
 	}
