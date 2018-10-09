@@ -4,7 +4,6 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"time"
 
@@ -23,7 +22,7 @@ var jobNotify = []uint16{
 func main() {
 	pnames, err := printer.ReadNames()
 	if err != nil {
-		log.Println("Error", err)
+		fmt.Println("printer.ReadNames", err)
 		os.Exit(1)
 	}
 
@@ -45,13 +44,13 @@ func main() {
 		fmt.Println("Opening printer", pname)
 		p, err := printer.Open(pname)
 		if err != nil {
-			log.Println("Error printer.Open", pname, err)
+			fmt.Println("printer.Open", pname, err)
 			os.Exit(1)
 		}
 
 		n, err := p.GetNotifications(done, printer.PRINTER_CHANGE_ALL, 0, notifyOptions)
 		if err != nil {
-			log.Println("Error printer::GetNotifications", pname, err)
+			fmt.Println("printer.GetNotifications", pname, err)
 			os.Exit(1)
 		}
 

@@ -4,7 +4,6 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"os"
 
 	"github.com/jazzy-crane/printer"
@@ -13,7 +12,7 @@ import (
 func main() {
 	pnames, err := printer.ReadNames()
 	if err != nil {
-		log.Println("Error", err)
+		fmt.Println("printer.ReadNames", err)
 		os.Exit(1)
 	}
 
@@ -33,13 +32,13 @@ func main() {
 	for _, pname := range pnames {
 		p, err := printer.Open(pname)
 		if err != nil {
-			log.Println("Error printer.Open", pname, err)
+			fmt.Println("printer.Open", pname, err)
 			os.Exit(1)
 		}
 
 		notifications, err := p.ChangeNotifications(printer.PRINTER_CHANGE_ALL, 0, notifyOptions)
 		if err != nil {
-			log.Println("Error ChangeNotifications", err)
+			fmt.Println("printerChangeNotifications", err)
 			os.Exit(1)
 		}
 
@@ -51,7 +50,7 @@ func main() {
 				pni, err := pcnh.Next(nil)
 				if err != nil {
 					if err != printer.ErrNoNotification {
-						log.Println("Unexpected error from ChangeNotificationHandle::Next", err)
+						fmt.Println("ChangeNotificationHandle::Next", err)
 					}
 					continue
 				}
