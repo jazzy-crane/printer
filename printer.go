@@ -6,6 +6,7 @@
 package printer
 
 import (
+	"bytes"
 	"errors"
 	"strings"
 	"syscall"
@@ -321,6 +322,62 @@ func systemTimeToTime(st *syscall.Systemtime, isUTC bool) time.Time {
 	).UTC()
 }
 
+func jobStatusCodeToString(sc uint32) string {
+	var buf bytes.Buffer
+
+	if sc == 0 {
+		return "Queue Paused"
+	}
+
+	if sc&JOB_STATUS_PRINTING != 0 {
+		buf.WriteString("Printing, ")
+	}
+	if sc&JOB_STATUS_PAUSED != 0 {
+		buf.WriteString("Paused, ")
+	}
+	if sc&JOB_STATUS_ERROR != 0 {
+		buf.WriteString("Error, ")
+	}
+	if sc&JOB_STATUS_DELETING != 0 {
+		buf.WriteString("Deleting, ")
+	}
+	if sc&JOB_STATUS_SPOOLING != 0 {
+		buf.WriteString("Spooling, ")
+	}
+	if sc&JOB_STATUS_OFFLINE != 0 {
+		buf.WriteString("Printer Offline, ")
+	}
+	if sc&JOB_STATUS_PAPEROUT != 0 {
+		buf.WriteString("Out of Paper, ")
+	}
+	if sc&JOB_STATUS_PRINTED != 0 {
+		buf.WriteString("Printed, ")
+	}
+	if sc&JOB_STATUS_DELETED != 0 {
+		buf.WriteString("Deleted, ")
+	}
+	if sc&JOB_STATUS_BLOCKED_DEVQ != 0 {
+		buf.WriteString("Driver Error, ")
+	}
+	if sc&JOB_STATUS_USER_INTERVENTION != 0 {
+		buf.WriteString("User Action Required, ")
+	}
+	if sc&JOB_STATUS_RESTART != 0 {
+		buf.WriteString("Restarted, ")
+	}
+	if sc&JOB_STATUS_COMPLETE != 0 {
+		buf.WriteString("Sent to Printer, ")
+	}
+	if sc&JOB_STATUS_RETAINED != 0 {
+		buf.WriteString("Retained, ")
+	}
+	if sc&JOB_STATUS_RENDERING_LOCALLY != 0 {
+		buf.WriteString("Rendering on Client, ")
+	}
+
+	return strings.TrimRight(buf.String(), ", ")
+}
+
 // Jobs returns information about all print jobs on this printer
 func (p *Printer) Jobs() ([]JobInfo, error) {
 	var bytesNeeded, jobsReturned uint32
@@ -368,55 +425,7 @@ func (p *Printer) Jobs() ([]JobInfo, error) {
 			pji.Status = syscall.UTF16ToString((*[2048]uint16)(unsafe.Pointer(j.Status))[:])
 		}
 		if strings.TrimSpace(pji.Status) == "" {
-			if pji.StatusCode == 0 {
-				pji.Status += "Queue Paused, "
-			}
-			if pji.StatusCode&JOB_STATUS_PRINTING != 0 {
-				pji.Status += "Printing, "
-			}
-			if pji.StatusCode&JOB_STATUS_PAUSED != 0 {
-				pji.Status += "Paused, "
-			}
-			if pji.StatusCode&JOB_STATUS_ERROR != 0 {
-				pji.Status += "Error, "
-			}
-			if pji.StatusCode&JOB_STATUS_DELETING != 0 {
-				pji.Status += "Deleting, "
-			}
-			if pji.StatusCode&JOB_STATUS_SPOOLING != 0 {
-				pji.Status += "Spooling, "
-			}
-			if pji.StatusCode&JOB_STATUS_OFFLINE != 0 {
-				pji.Status += "Printer Offline, "
-			}
-			if pji.StatusCode&JOB_STATUS_PAPEROUT != 0 {
-				pji.Status += "Out of Paper, "
-			}
-			if pji.StatusCode&JOB_STATUS_PRINTED != 0 {
-				pji.Status += "Printed, "
-			}
-			if pji.StatusCode&JOB_STATUS_DELETED != 0 {
-				pji.Status += "Deleted, "
-			}
-			if pji.StatusCode&JOB_STATUS_BLOCKED_DEVQ != 0 {
-				pji.Status += "Driver Error, "
-			}
-			if pji.StatusCode&JOB_STATUS_USER_INTERVENTION != 0 {
-				pji.Status += "User Action Required, "
-			}
-			if pji.StatusCode&JOB_STATUS_RESTART != 0 {
-				pji.Status += "Restarted, "
-			}
-			if pji.StatusCode&JOB_STATUS_COMPLETE != 0 {
-				pji.Status += "Sent to Printer, "
-			}
-			if pji.StatusCode&JOB_STATUS_RETAINED != 0 {
-				pji.Status += "Retained, "
-			}
-			if pji.StatusCode&JOB_STATUS_RENDERING_LOCALLY != 0 {
-				pji.Status += "Rendering on Client, "
-			}
-			pji.Status = strings.TrimRight(pji.Status, ", ")
+			pji.Status = jobStatusCodeToString(pji.StatusCode)
 		}
 		pji.Submitted = systemTimeToTime(&j.Submitted, true)
 		pjs = append(pjs, pji)
@@ -554,7 +563,7 @@ func (pnid *PRINTER_NOTIFY_INFO_DATA) ToNotifyInfoData() *NotifyInfoData {
 			JOB_NOTIFY_FIELD_PAGES_PRINTED,
 			JOB_NOTIFY_FIELD_TOTAL_BYTES,
 			JOB_NOTIFY_FIELD_BYTES_PRINTED:
-			p.Value = int(pnid.NotifyInfo.Datasz)
+			p.Value = uint32(pnid.NotifyInfo.Datasz)
 		case JOB_NOTIFY_FIELD_DEVMODE:
 			// TODO pnid.NotifyInfo.Dataptr is a pointer to a DEVMODE structure that contains device-initialization and environment data for the printer driver.
 		case JOB_NOTIFY_FIELD_SECURITY_DESCRIPTOR:

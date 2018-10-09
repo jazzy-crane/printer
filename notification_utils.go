@@ -95,7 +95,11 @@ func JobNotifyFieldToString(field uint16) string {
 
 func (pnid *NotifyInfoData) String() string {
 	if pnid.Type == JOB_NOTIFY_TYPE {
-		return fmt.Sprintf("Job #%d %s: %v", pnid.ID, JobNotifyFieldToString(pnid.Field), pnid.Value)
+		if pnid.Field == JOB_NOTIFY_FIELD_STATUS {
+			return fmt.Sprintf("Job #%d %s: %v (%s)", pnid.ID, JobNotifyFieldToString(pnid.Field), pnid.Value, jobStatusCodeToString(pnid.Value.(uint32)))
+		} else {
+			return fmt.Sprintf("Job #%d %s: %v", pnid.ID, JobNotifyFieldToString(pnid.Field), pnid.Value)
+		}
 	} else if pnid.Type == PRINTER_NOTIFY_TYPE {
 		return fmt.Sprintf("Printer Field %d Value %v", pnid.Field, pnid.Value)
 	}
