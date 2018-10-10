@@ -540,52 +540,28 @@ func (p *Printer) DriverInfo() (*DriverInfo, error) {
 	}, nil
 }
 
-func (p *Printer) StartDocument(name, datatype string) error {
-	name16, err := syscall.UTF16PtrFromString(name)
-	if err != nil {
-		return err
+func stringToUTF16Ptr(s string) *uint16 {
+	if s == "" {
+		return nil
 	}
-
-	datatype16, err := syscall.UTF16PtrFromString(name)
-	if err != nil {
-		return err
-	}
-
-	d := DOC_INFO_1{
-		DocName:    name16,
-		OutputFile: nil,
-		Datatype:   datatype16,
-	}
-	return StartDocPrinter(p.h, docInfoLevel, &d)
+	s16, _ := syscall.UTF16PtrFromString(s)
+	return s16
 }
 
-func (p *Printer) StartDocPrinter(docName, outputFile, datatype string) error {
-	d := DOC_INFO_1{}
-
-	if docName == "" {
-		d.DocName = nil
-	} else {
-		d.DocName, _ = syscall.UTF16PtrFromString(docName)
+// StartDocument wraps StartDocPrinter windows API call
+// Empty strings translate to NULL arguments in DOC_INFO_1
+func (p *Printer) StartDocument(name, outputFile, datatype string) error {
+	d := DOC_INFO_1{
+		DocName:    stringToUTF16Ptr(name),
+		OutputFile: stringToUTF16Ptr(outputFile),
+		Datatype:   stringToUTF16Ptr(datatype),
 	}
-
-	if outputFile == "" {
-		d.OutputFile = nil
-	} else {
-		d.OutputFile, _ = syscall.UTF16PtrFromString(outputFile)
-	}
-
-	if datatype == "" {
-		d.Datatype = nil
-	} else {
-		d.Datatype, _ = syscall.UTF16PtrFromString(datatype)
-	}
-
 	return StartDocPrinter(p.h, docInfoLevel, &d)
 }
 
 // StartRawDocument calls StartDocument and passes either "RAW" or "XPS_PASS"
 // as a document type, depending if printer driver is XPS-based or not.
-func (p *Printer) StartRawDocument(name string) error {
+func (p *Printer) StartRawDocument(name, outputFile string) error {
 	di, err := p.DriverInfo()
 	if err != nil {
 		return err
@@ -596,7 +572,7 @@ func (p *Printer) StartRawDocument(name string) error {
 	if di.Attributes&PRINTER_DRIVER_XPS != 0 {
 		datatype = "XPS_PASS"
 	}
-	return p.StartDocument(name, datatype)
+	return p.StartDocument(name, outputFile, datatype)
 }
 
 func (p *Printer) Write(b []byte) (int, error) {
