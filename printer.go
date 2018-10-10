@@ -506,10 +506,20 @@ func (p *Printer) DriverInfo() (*DriverInfo, error) {
 }
 
 func (p *Printer) StartDocument(name, datatype string) error {
+	name16, err := syscall.UTF16PtrFromString(name)
+	if err != nil {
+		return err
+	}
+
+	datatype16, err := syscall.UTF16PtrFromString(name)
+	if err != nil {
+		return err
+	}
+
 	d := DOC_INFO_1{
-		DocName:    &(syscall.StringToUTF16(name))[0],
+		DocName:    name16,
 		OutputFile: nil,
-		Datatype:   &(syscall.StringToUTF16(datatype))[0],
+		Datatype:   datatype16,
 	}
 	return StartDocPrinter(p.h, 1, &d)
 }
