@@ -16,11 +16,15 @@ import (
 
 //go:generate go run mksyscall_windows.go -output zapi.go printer.go
 
+const docInfoLevel = 1
+
 type DOC_INFO_1 struct {
 	DocName    *uint16
 	OutputFile *uint16
 	Datatype   *uint16
 }
+
+const printerInfoLevel = 5
 
 type PRINTER_INFO_5 struct {
 	PrinterName              *uint16
@@ -58,20 +62,33 @@ type DRIVER_INFO_8 struct {
 	MinInboxDriverVerVersion uint32
 }
 
-type JOB_INFO_1 struct {
-	JobID        uint32
-	PrinterName  *uint16
-	MachineName  *uint16
-	UserName     *uint16
-	Document     *uint16
-	DataType     *uint16
-	Status       *uint16
-	StatusCode   uint32
-	Priority     uint32
-	Position     uint32
-	TotalPages   uint32
-	PagesPrinted uint32
-	Submitted    syscall.Systemtime
+const jobInfoLevel = 4
+
+type JOB_INFO_4 struct {
+	JobID              uint32
+	PrinterName        *uint16
+	MachineName        *uint16
+	UserName           *uint16
+	Document           *uint16
+	NotifyName         *uint16
+	DataType           *uint16
+	PrintProcessor     *uint16
+	Parameters         *uint16
+	DriverName         *uint16
+	Devmode            unsafe.Pointer
+	Status             *uint16
+	SecurityDescriptor unsafe.Pointer
+	StatusCode         uint32
+	Priority           uint32
+	Position           uint32
+	StartTime          uint32
+	UntilTime          uint32
+	TotalPages         uint32
+	Size               uint32
+	Submitted          syscall.Systemtime
+	Time               uint32
+	PagesPrinted       uint32
+	SizeHigh           uint32
 }
 
 type PRINTER_NOTIFY_OPTIONS_TYPE struct {
@@ -246,13 +263,13 @@ func ReadNames() ([]string, error) {
 	const flags = PRINTER_ENUM_LOCAL | PRINTER_ENUM_CONNECTIONS
 	var needed, returned uint32
 	buf := make([]byte, 1)
-	err := EnumPrinters(flags, nil, 5, &buf[0], uint32(len(buf)), &needed, &returned)
+	err := EnumPrinters(flags, nil, printerInfoLevel, &buf[0], uint32(len(buf)), &needed, &returned)
 	if err != nil {
 		if err != syscall.ERROR_INSUFFICIENT_BUFFER {
 			return nil, err
 		}
 		buf = make([]byte, needed)
-		err = EnumPrinters(flags, nil, 5, &buf[0], uint32(len(buf)), &needed, &returned)
+		err = EnumPrinters(flags, nil, printerInfoLevel, &buf[0], uint32(len(buf)), &needed, &returned)
 		if err != nil {
 			return nil, err
 		}
@@ -296,18 +313,27 @@ type DriverInfo struct {
 
 // JobInfo stores information about a print job.
 type JobInfo struct {
-	JobID           uint32
-	UserMachineName string
-	UserName        string
-	DocumentName    string
-	DataType        string
-	Status          string
-	StatusCode      uint32
-	Priority        uint32
-	Position        uint32
-	TotalPages      uint32
-	PagesPrinted    uint32
-	Submitted       time.Time
+	JobID           uint32        // a job identifier value
+	PrinterName     string        // the name of the printer for which the job is spooled
+	UserMachineName string        // the name of the machine that created the print job
+	UserName        string        // the name of the user who owns the print job
+	DocumentName    string        // the name of the print job (for example, "MS-WORD: Review.doc")
+	NotifyName      string        // the name of the user who should be notified when the job has been printed or when an error occurs while printing the job
+	DataType        string        // the type of data used to record the print job
+	PrintProcessor  string        // the name of the print processor that should be used to print the job
+	Parameters      string        // print-processor parameters
+	DriverName      string        // the name of the printer driver that should be used to process the print job
+	Status          string        // the status of the print job. This member should be checked prior to StatusCode and takes precedence over it
+	StatusCode      uint32        // the job status as a bitmap of JOB_STATUS_* constants
+	Priority        uint32        // the job priority. This member can be one of the following values or in the range between 1 through 99 (MIN_PRIORITY through MAX_PRIORITY)
+	Position        uint32        // the job's position in the print queue
+	StartTime       uint32        // the earliest time that the job can be printed
+	UntilTime       uint32        // the latest time that the job can be printed
+	TotalPages      uint32        // the number of pages required for the job. This value may be zero if the print job does not contain page delimiting information
+	Size            uint64        // the size, in bytes, of the job.
+	Time            time.Duration // the total time, in milliseconds, that has elapsed since the job began printing
+	PagesPrinted    uint32        // the number of pages that have printed. This value may be zero if the print job does not contain page delimiting information
+	Submitted       time.Time     // the time when the job was submitted
 }
 
 // systemTimeToTime converts a syscall.Systemtime to a time.Time
@@ -390,34 +416,43 @@ func jobStatusCodeToString(sc uint32) string {
 	return strings.TrimRight(buf.String(), ", ")
 }
 
-func (j *JOB_INFO_1) ToJobInfo() *JobInfo {
+// utf16PtrToString wraps the stanhdard syscall.UTF16ToString with a nil check
+func utf16PtrToString(ptr *uint16) string {
+	if ptr == nil {
+		return ""
+	}
+
+	return syscall.UTF16ToString((*[0xffff]uint16)(unsafe.Pointer(ptr))[:])
+}
+
+func (j *JOB_INFO_4) ToJobInfo() *JobInfo {
 	pji := &JobInfo{
-		JobID:        j.JobID,
-		StatusCode:   j.StatusCode,
-		Priority:     j.Priority,
-		Position:     j.Position,
-		TotalPages:   j.TotalPages,
-		PagesPrinted: j.PagesPrinted,
+		JobID:           j.JobID,
+		StatusCode:      j.StatusCode,
+		Priority:        j.Priority,
+		Position:        j.Position,
+		TotalPages:      j.TotalPages,
+		PagesPrinted:    j.PagesPrinted,
+		StartTime:       j.StartTime,
+		UntilTime:       j.UntilTime,
+		Size:            uint64(j.Size) + (uint64(j.SizeHigh) << 32),
+		Time:            time.Millisecond * time.Duration(j.Time),
+		PrinterName:     utf16PtrToString(j.PrinterName),
+		UserMachineName: utf16PtrToString(j.MachineName),
+		UserName:        utf16PtrToString(j.UserName),
+		DocumentName:    utf16PtrToString(j.Document),
+		NotifyName:      utf16PtrToString(j.NotifyName),
+		DataType:        utf16PtrToString(j.DataType),
+		PrintProcessor:  utf16PtrToString(j.PrintProcessor),
+		Parameters:      utf16PtrToString(j.Parameters),
+		DriverName:      utf16PtrToString(j.DriverName),
+		Status:          utf16PtrToString(j.Status),
+		Submitted:       systemTimeToTime(&j.Submitted, true),
 	}
-	if j.MachineName != nil {
-		pji.UserMachineName = syscall.UTF16ToString((*[2048]uint16)(unsafe.Pointer(j.MachineName))[:])
-	}
-	if j.UserName != nil {
-		pji.UserName = syscall.UTF16ToString((*[2048]uint16)(unsafe.Pointer(j.UserName))[:])
-	}
-	if j.Document != nil {
-		pji.DocumentName = syscall.UTF16ToString((*[2048]uint16)(unsafe.Pointer(j.Document))[:])
-	}
-	if j.DataType != nil {
-		pji.DataType = syscall.UTF16ToString((*[2048]uint16)(unsafe.Pointer(j.DataType))[:])
-	}
-	if j.Status != nil {
-		pji.Status = syscall.UTF16ToString((*[2048]uint16)(unsafe.Pointer(j.Status))[:])
-	}
+
 	if strings.TrimSpace(pji.Status) == "" {
 		pji.Status = jobStatusCodeToString(pji.StatusCode)
 	}
-	pji.Submitted = systemTimeToTime(&j.Submitted, true)
 
 	return pji
 }
@@ -427,7 +462,7 @@ func (p *Printer) Jobs() ([]JobInfo, error) {
 	var bytesNeeded, jobsReturned uint32
 	buf := make([]byte, 1)
 	for {
-		err := EnumJobs(p.h, 0, 255, 1, &buf[0], uint32(len(buf)), &bytesNeeded, &jobsReturned)
+		err := EnumJobs(p.h, 0, 255, jobInfoLevel, &buf[0], uint32(len(buf)), &bytesNeeded, &jobsReturned)
 		if err == nil {
 			break
 		}
@@ -443,7 +478,7 @@ func (p *Printer) Jobs() ([]JobInfo, error) {
 		return nil, nil
 	}
 	pjs := make([]JobInfo, 0, jobsReturned)
-	ji := (*[2048]JOB_INFO_1)(unsafe.Pointer(&buf[0]))[:jobsReturned]
+	ji := (*[2048]JOB_INFO_4)(unsafe.Pointer(&buf[0]))[:jobsReturned]
 	for _, j := range ji {
 		pjs = append(pjs, *j.ToJobInfo())
 	}
@@ -454,7 +489,7 @@ func (p *Printer) Job(jobId uint32) (*JobInfo, error) {
 	var bytesNeeded uint32
 	buf := make([]byte, 1024)
 	for {
-		err := GetJob(p.h, jobId, 1, &buf[0], uint32(len(buf)), &bytesNeeded)
+		err := GetJob(p.h, jobId, jobInfoLevel, &buf[0], uint32(len(buf)), &bytesNeeded)
 		if err == nil {
 			break
 		}
@@ -467,13 +502,13 @@ func (p *Printer) Job(jobId uint32) (*JobInfo, error) {
 		buf = make([]byte, bytesNeeded)
 	}
 
-	ji := (*JOB_INFO_1)(unsafe.Pointer(&buf[0]))
+	ji := (*JOB_INFO_4)(unsafe.Pointer(&buf[0]))
 	return ji.ToJobInfo(), nil
 }
 
 func (p *Printer) SetJob(jobID uint32, jobInfo *JobInfo, command uint32) error {
 	if jobInfo != nil {
-		return errors.New("Not implemented JobInfo -> JOB_INFO_1")
+		return errors.New("Not implemented JobInfo -> JOB_INFO_*")
 	}
 
 	return SetJob(p.h, jobID, 0, nil, command)
@@ -521,7 +556,7 @@ func (p *Printer) StartDocument(name, datatype string) error {
 		OutputFile: nil,
 		Datatype:   datatype16,
 	}
-	return StartDocPrinter(p.h, 1, &d)
+	return StartDocPrinter(p.h, docInfoLevel, &d)
 }
 
 func (p *Printer) StartDocPrinter(docName, outputFile, datatype string) error {
@@ -545,7 +580,7 @@ func (p *Printer) StartDocPrinter(docName, outputFile, datatype string) error {
 		d.Datatype, _ = syscall.UTF16PtrFromString(datatype)
 	}
 
-	return StartDocPrinter(p.h, 1, &d)
+	return StartDocPrinter(p.h, docInfoLevel, &d)
 }
 
 // StartRawDocument calls StartDocument and passes either "RAW" or "XPS_PASS"

@@ -90,6 +90,17 @@ func main() {
 						fmt.Printf("%#v\n", job)
 					}
 
+					jobs, err := p.Jobs()
+					if err != nil {
+						fmt.Println("p.Jobs", err)
+					} else {
+						for i, j := range jobs {
+							fmt.Printf("%d: %#v\n", i, j)
+						}
+					}
+
+					time.Sleep(time.Second * 10)
+
 					err = p.SetJob(pni.Data[0].ID, nil, printer.JOB_CONTROL_RELEASE)
 					if err != nil {
 						fmt.Println("p.SetJob", err)
