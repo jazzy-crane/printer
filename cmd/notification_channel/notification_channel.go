@@ -4,7 +4,6 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"sync"
 	"time"
 
@@ -84,6 +83,6 @@ outerloop:
 		}
 
 		wg.Wait()
-		log.Println("All notification goroutines returned, probably due to spooler service stop/restart")
+		fmt.Println("All notification goroutines returned, probably due to spooler service stop/restart")
 	}
 }
