@@ -8,6 +8,7 @@ package printer
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"strings"
 	"syscall"
 	"time"
@@ -674,6 +675,7 @@ func (pnid *PRINTER_NOTIFY_INFO_DATA) ToNotifyInfoData() *NotifyInfoData {
 func (pni *PRINTER_NOTIFY_INFO) ToNotifyInfo() *NotifyInfo {
 	numNotifications := int(pni.Count)
 	if numNotifications > PRINTER_NOTIFY_MAX_NOTIFICATIONS {
+		fmt.Printf("Discarding some notifications; have %d but processing %d\n", numNotifications, PRINTER_NOTIFY_MAX_NOTIFICATIONS)
 		numNotifications = PRINTER_NOTIFY_MAX_NOTIFICATIONS
 	}
 
