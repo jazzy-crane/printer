@@ -75,6 +75,25 @@ func TestDriverInfo(t *testing.T) {
 	t.Logf("%+v", di)
 }
 
+func TestPrinterInfo(t *testing.T) {
+	name, err := Default()
+	if err != nil {
+		t.Fatalf("Default failed: %v", err)
+	}
+
+	p, err := Open(name)
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+	defer p.Close()
+
+	i, err := p.PrinterInfo()
+	if err != nil {
+		t.Fatalf("DriverInfo failed: %v", err)
+	}
+	t.Logf("%+v", i)
+}
+
 func TestJobs(t *testing.T) {
 	names, err := ReadNames()
 	if err != nil {

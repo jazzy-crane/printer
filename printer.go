@@ -15,7 +15,7 @@ import (
 	"unsafe"
 )
 
-//go:generate go run mksyscall_windows.go -output zapi.go printer.go
+//go:generate go run golang.org/x/sys/windows/mkwinsyscall -output zapi.go printer.go
 
 const docInfoLevel = 1
 
@@ -192,8 +192,8 @@ const (
 	PRINTER_NOTIFY_TYPE = 0 // TODO: Implement support for this
 	JOB_NOTIFY_TYPE     = 1
 
-	PRINTER_NOTIFY_INFO_DISCARDED  = 1
-	PRINTER_NOTIFY_OPTIONS_REFRESH = 1
+	PRINTER_NOTIFY_INFO_DISCARDED    = 1
+	PRINTER_NOTIFY_OPTIONS_REFRESH   = 1
 	PRINTER_NOTIFY_MAX_NOTIFICATIONS = 0xffff
 
 	JOB_STATUS_PAUSED            = 0x00000001 // Job is paused
@@ -234,6 +234,7 @@ var ErrNoNotification = errors.New("no notification information")
 //sys	StartPagePrinter(h syscall.Handle) (err error) = winspool.StartPagePrinter
 //sys	EndPagePrinter(h syscall.Handle) (err error) = winspool.EndPagePrinter
 //sys	EnumPrinters(flags uint32, name *uint16, level uint32, buf *byte, bufN uint32, needed *uint32, returned *uint32) (err error) = winspool.EnumPrintersW
+//sys   GetPrinter(h syscall.Handle, level uint32, buf *byte, bufN uint32, needed *uint32) (err error) = winspool.GetPrinterW
 //sys	GetPrinterDriver(h syscall.Handle, env *uint16, level uint32, di *byte, n uint32, needed *uint32) (err error) = winspool.GetPrinterDriverW
 //sys	EnumJobs(h syscall.Handle, firstJob uint32, noJobs uint32, level uint32, buf *byte, bufN uint32, bytesNeeded *uint32, jobsReturned *uint32) (err error) = winspool.EnumJobsW
 //sys	GetJob(h syscall.Handle, jobId uint32, level uint32, buf *byte, bufN uint32, bytesNeeded *uint32) (err error) = winspool.GetJobW
@@ -336,6 +337,15 @@ type JobInfo struct {
 	Time            time.Duration // the total time, in milliseconds, that has elapsed since the job began printing
 	PagesPrinted    uint32        // the number of pages that have printed. This value may be zero if the print job does not contain page delimiting information
 	Submitted       time.Time     // the time when the job was submitted
+}
+
+// PRINTER_INFO_5 as a Golang struct
+type Info struct {
+	PrinterName              string
+	PortName                 string
+	Attributes               uint32
+	DeviceNotSelectedTimeout uint32
+	TransmissionRetryTimeout uint32
 }
 
 // systemTimeToTime converts a syscall.Systemtime to a time.Time
@@ -516,7 +526,7 @@ func (p *Printer) SetJob(jobID uint32, jobInfo *JobInfo, command uint32) error {
 	return SetJob(p.h, jobID, 0, nil, command)
 }
 
-// DriverInfo returns information about printer p driver.
+// DriverInfo returns information about a printer's driver.
 func (p *Printer) DriverInfo() (*DriverInfo, error) {
 	var needed uint32
 	b := make([]byte, 1024*10)
@@ -539,6 +549,33 @@ func (p *Printer) DriverInfo() (*DriverInfo, error) {
 		Name:        syscall.UTF16ToString((*[2048]uint16)(unsafe.Pointer(di.Name))[:]),
 		DriverPath:  syscall.UTF16ToString((*[2048]uint16)(unsafe.Pointer(di.DriverPath))[:]),
 		Environment: syscall.UTF16ToString((*[2048]uint16)(unsafe.Pointer(di.Environment))[:]),
+	}, nil
+}
+
+// PrinterInfo returns information about a printer
+func (p *Printer) PrinterInfo() (*Info, error) {
+	var needed uint32
+	b := make([]byte, 1024*10)
+	for {
+		err := GetPrinter(p.h, 5, &b[0], uint32(len(b)), &needed)
+		if err == nil {
+			break
+		}
+		if err != syscall.ERROR_INSUFFICIENT_BUFFER {
+			return nil, err
+		}
+		if needed <= uint32(len(b)) {
+			return nil, err
+		}
+		b = make([]byte, needed)
+	}
+	pi := (*PRINTER_INFO_5)(unsafe.Pointer(&b[0]))
+	return &Info{
+		PrinterName:              syscall.UTF16ToString((*[2048]uint16)(unsafe.Pointer(pi.PrinterName))[:]),
+		PortName:                 syscall.UTF16ToString((*[2048]uint16)(unsafe.Pointer(pi.PortName))[:]),
+		Attributes:               pi.Attributes,
+		DeviceNotSelectedTimeout: pi.DeviceNotSelectedTimeout,
+		TransmissionRetryTimeout: pi.TransmissionRetryTimeout,
 	}, nil
 }
 

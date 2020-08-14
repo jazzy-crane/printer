@@ -150,7 +150,7 @@ func (p *Printer) GetNotifications(done <-chan struct{}, filter uint32, options 
 				default:
 					// Call a quick and inexpensive function using the printer handle so we can determine if the spooler RPC
 					// service is still there
-					_, err := p.DriverInfo()
+					_, err := p.PrinterInfo()
 					if err != nil {
 						return
 					}
