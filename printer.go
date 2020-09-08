@@ -277,11 +277,10 @@ func ReadNames() ([]string, error) {
 			return nil, err
 		}
 	}
-	ps := (*[1024]PRINTER_INFO_5)(unsafe.Pointer(&buf[0]))[:returned]
+	ps := (*[1024]PRINTER_INFO_5)(unsafe.Pointer(&buf[0]))[:returned:returned]
 	names := make([]string, 0, returned)
 	for _, p := range ps {
-		v := (*[1024]uint16)(unsafe.Pointer(p.PrinterName))[:]
-		names = append(names, syscall.UTF16ToString(v))
+		names = append(names, utf16PtrToString(p.PrinterName))
 	}
 	return names, nil
 }
@@ -428,13 +427,25 @@ func jobStatusCodeToString(sc uint32) string {
 	return strings.TrimRight(buf.String(), ", ")
 }
 
+const maxStringSize = 1 << 20
+
 // utf16PtrToString wraps the stanhdard syscall.UTF16ToString with a nil check
-func utf16PtrToString(ptr *uint16) string {
-	if ptr == nil {
+func utf16PtrToString(p *uint16) string {
+	if p == nil {
 		return ""
 	}
-
-	return syscall.UTF16ToString((*[0xffff]uint16)(unsafe.Pointer(ptr))[:])
+	// Find NUL terminator.
+	end := unsafe.Pointer(p)
+	n := 0
+	for *(*uint16)(end) != 0 {
+		end = unsafe.Pointer(uintptr(end) + unsafe.Sizeof(*p))
+		n++
+	}
+	if n >= maxStringSize {
+		return ""
+	}
+	v := (*[maxStringSize]uint16)(unsafe.Pointer(p))[:n:n]
+	return syscall.UTF16ToString(v)
 }
 
 func (j *JOB_INFO_4) ToJobInfo() *JobInfo {
@@ -490,7 +501,7 @@ func (p *Printer) Jobs() ([]JobInfo, error) {
 		return nil, nil
 	}
 	pjs := make([]JobInfo, 0, jobsReturned)
-	ji := (*[2048]JOB_INFO_4)(unsafe.Pointer(&buf[0]))[:jobsReturned]
+	ji := (*[2048]JOB_INFO_4)(unsafe.Pointer(&buf[0]))[:jobsReturned:jobsReturned]
 	for _, j := range ji {
 		pjs = append(pjs, *j.ToJobInfo())
 	}
@@ -546,9 +557,9 @@ func (p *Printer) DriverInfo() (*DriverInfo, error) {
 	di := (*DRIVER_INFO_8)(unsafe.Pointer(&b[0]))
 	return &DriverInfo{
 		Attributes:  di.PrinterDriverAttributes,
-		Name:        syscall.UTF16ToString((*[2048]uint16)(unsafe.Pointer(di.Name))[:]),
-		DriverPath:  syscall.UTF16ToString((*[2048]uint16)(unsafe.Pointer(di.DriverPath))[:]),
-		Environment: syscall.UTF16ToString((*[2048]uint16)(unsafe.Pointer(di.Environment))[:]),
+		Name:        utf16PtrToString(di.Name),
+		DriverPath:  utf16PtrToString(di.DriverPath),
+		Environment: utf16PtrToString(di.Environment),
 	}, nil
 }
 
@@ -571,8 +582,8 @@ func (p *Printer) PrinterInfo() (*Info, error) {
 	}
 	pi := (*PRINTER_INFO_5)(unsafe.Pointer(&b[0]))
 	return &Info{
-		PrinterName:              syscall.UTF16ToString((*[2048]uint16)(unsafe.Pointer(pi.PrinterName))[:]),
-		PortName:                 syscall.UTF16ToString((*[2048]uint16)(unsafe.Pointer(pi.PortName))[:]),
+		PrinterName:              utf16PtrToString(pi.PrinterName),
+		PortName:                 utf16PtrToString(pi.PortName),
 		Attributes:               pi.Attributes,
 		DeviceNotSelectedTimeout: pi.DeviceNotSelectedTimeout,
 		TransmissionRetryTimeout: pi.TransmissionRetryTimeout,
@@ -681,7 +692,8 @@ func (pnid *PRINTER_NOTIFY_INFO_DATA) ToNotifyInfoData() *NotifyInfoData {
 			JOB_NOTIFY_FIELD_DRIVER_NAME,
 			JOB_NOTIFY_FIELD_STATUS_STRING,
 			JOB_NOTIFY_FIELD_DOCUMENT:
-			ps := ((*[0xffff]uint16)(pnid.NotifyData.Dataptr))[:pnid.NotifyData.Datasz/2]
+			chars := pnid.NotifyData.Datasz / 2
+			ps := ((*[0xffff]uint16)(pnid.NotifyData.Dataptr))[:chars:chars]
 			p.Value = syscall.UTF16ToString(ps)
 		case JOB_NOTIFY_FIELD_STATUS,
 			JOB_NOTIFY_FIELD_PRIORITY,
