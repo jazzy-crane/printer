@@ -38,6 +38,7 @@ func errnoErr(e syscall.Errno) error {
 
 var (
 	modwinspool = windows.NewLazySystemDLL("winspool.drv")
+	modkernel32 = windows.NewLazySystemDLL("kernel32.dll")
 
 	procGetDefaultPrinterW                 = modwinspool.NewProc("GetDefaultPrinterW")
 	procClosePrinter                       = modwinspool.NewProc("ClosePrinter")
@@ -57,6 +58,9 @@ var (
 	procFindNextPrinterChangeNotification  = modwinspool.NewProc("FindNextPrinterChangeNotification")
 	procFindClosePrinterChangeNotification = modwinspool.NewProc("FindClosePrinterChangeNotification")
 	procFreePrinterNotifyInfo              = modwinspool.NewProc("FreePrinterNotifyInfo")
+	procGetProcessHeap                     = modkernel32.NewProc("GetProcessHeap")
+	procHeapAlloc                          = modkernel32.NewProc("HeapAlloc")
+	procHeapFree                           = modkernel32.NewProc("HeapFree")
 )
 
 func GetDefaultPrinter(buf *uint16, bufN *uint32) (err error) {
@@ -266,6 +270,37 @@ func FindClosePrinterChangeNotification(h syscall.Handle) (err error) {
 
 func FreePrinterNotifyInfo(info *PRINTER_NOTIFY_INFO) (err error) {
 	r1, _, e1 := syscall.Syscall(procFreePrinterNotifyInfo.Addr(), 1, uintptr(unsafe.Pointer(info)), 0, 0)
+	if r1 == 0 {
+		if e1 != 0 {
+			err = errnoErr(e1)
+		} else {
+			err = syscall.EINVAL
+		}
+	}
+	return
+}
+
+func GetProcessHeap() (h syscall.Handle, err error) {
+	r0, _, e1 := syscall.Syscall(procGetProcessHeap.Addr(), 0, 0, 0, 0)
+	h = syscall.Handle(r0)
+	if h == 0 {
+		if e1 != 0 {
+			err = errnoErr(e1)
+		} else {
+			err = syscall.EINVAL
+		}
+	}
+	return
+}
+
+func HeapAlloc(h syscall.Handle, flags uint32, size uint) (p unsafe.Pointer) {
+	r0, _, _ := syscall.Syscall(procHeapAlloc.Addr(), 3, uintptr(h), uintptr(flags), uintptr(size))
+	p = unsafe.Pointer(r0)
+	return
+}
+
+func HeapFree(h syscall.Handle, flags uint32, p unsafe.Pointer) (err error) {
+	r1, _, e1 := syscall.Syscall(procHeapFree.Addr(), 3, uintptr(h), uintptr(flags), uintptr(p))
 	if r1 == 0 {
 		if e1 != 0 {
 			err = errnoErr(e1)
