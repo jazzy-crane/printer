@@ -13,6 +13,8 @@ import (
 	"syscall"
 	"time"
 	"unsafe"
+
+	"golang.org/x/sys/windows"
 )
 
 //go:generate go run golang.org/x/sys/windows/mkwinsyscall -output zapi.go printer.go
@@ -280,7 +282,7 @@ func ReadNames() ([]string, error) {
 	ps := (*[1024]PRINTER_INFO_5)(unsafe.Pointer(&buf[0]))[:returned:returned]
 	names := make([]string, 0, returned)
 	for _, p := range ps {
-		names = append(names, utf16PtrToString(p.PrinterName))
+		names = append(names, windows.UTF16PtrToString(p.PrinterName))
 	}
 	return names, nil
 }
@@ -427,27 +429,6 @@ func jobStatusCodeToString(sc uint32) string {
 	return strings.TrimRight(buf.String(), ", ")
 }
 
-const maxStringSize = 1 << 20
-
-// utf16PtrToString wraps the stanhdard syscall.UTF16ToString with a nil check
-func utf16PtrToString(p *uint16) string {
-	if p == nil {
-		return ""
-	}
-	// Find NUL terminator.
-	end := unsafe.Pointer(p)
-	n := 0
-	for *(*uint16)(end) != 0 {
-		end = unsafe.Pointer(uintptr(end) + unsafe.Sizeof(*p))
-		n++
-	}
-	if n >= maxStringSize {
-		return ""
-	}
-	v := (*[maxStringSize]uint16)(unsafe.Pointer(p))[:n:n]
-	return syscall.UTF16ToString(v)
-}
-
 func (j *JOB_INFO_4) ToJobInfo() *JobInfo {
 	pji := &JobInfo{
 		JobID:           j.JobID,
@@ -460,16 +441,16 @@ func (j *JOB_INFO_4) ToJobInfo() *JobInfo {
 		UntilTime:       j.UntilTime,
 		Size:            uint64(j.Size) + (uint64(j.SizeHigh) << 32),
 		Time:            time.Millisecond * time.Duration(j.Time),
-		PrinterName:     utf16PtrToString(j.PrinterName),
-		UserMachineName: utf16PtrToString(j.MachineName),
-		UserName:        utf16PtrToString(j.UserName),
-		DocumentName:    utf16PtrToString(j.Document),
-		NotifyName:      utf16PtrToString(j.NotifyName),
-		DataType:        utf16PtrToString(j.DataType),
-		PrintProcessor:  utf16PtrToString(j.PrintProcessor),
-		Parameters:      utf16PtrToString(j.Parameters),
-		DriverName:      utf16PtrToString(j.DriverName),
-		Status:          utf16PtrToString(j.Status),
+		PrinterName:     windows.UTF16PtrToString(j.PrinterName),
+		UserMachineName: windows.UTF16PtrToString(j.MachineName),
+		UserName:        windows.UTF16PtrToString(j.UserName),
+		DocumentName:    windows.UTF16PtrToString(j.Document),
+		NotifyName:      windows.UTF16PtrToString(j.NotifyName),
+		DataType:        windows.UTF16PtrToString(j.DataType),
+		PrintProcessor:  windows.UTF16PtrToString(j.PrintProcessor),
+		Parameters:      windows.UTF16PtrToString(j.Parameters),
+		DriverName:      windows.UTF16PtrToString(j.DriverName),
+		Status:          windows.UTF16PtrToString(j.Status),
 		Submitted:       systemTimeToTime(&j.Submitted, true),
 	}
 
@@ -557,9 +538,9 @@ func (p *Printer) DriverInfo() (*DriverInfo, error) {
 	di := (*DRIVER_INFO_8)(unsafe.Pointer(&b[0]))
 	return &DriverInfo{
 		Attributes:  di.PrinterDriverAttributes,
-		Name:        utf16PtrToString(di.Name),
-		DriverPath:  utf16PtrToString(di.DriverPath),
-		Environment: utf16PtrToString(di.Environment),
+		Name:        windows.UTF16PtrToString(di.Name),
+		DriverPath:  windows.UTF16PtrToString(di.DriverPath),
+		Environment: windows.UTF16PtrToString(di.Environment),
 	}, nil
 }
 
@@ -582,8 +563,8 @@ func (p *Printer) PrinterInfo() (*Info, error) {
 	}
 	pi := (*PRINTER_INFO_5)(unsafe.Pointer(&b[0]))
 	return &Info{
-		PrinterName:              utf16PtrToString(pi.PrinterName),
-		PortName:                 utf16PtrToString(pi.PortName),
+		PrinterName:              windows.UTF16PtrToString(pi.PrinterName),
+		PortName:                 windows.UTF16PtrToString(pi.PortName),
 		Attributes:               pi.Attributes,
 		DeviceNotSelectedTimeout: pi.DeviceNotSelectedTimeout,
 		TransmissionRetryTimeout: pi.TransmissionRetryTimeout,
