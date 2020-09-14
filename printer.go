@@ -223,9 +223,25 @@ const (
 	JOB_CONTROL_LAST_PAGE_EJECTED = 7
 	JOB_CONTROL_RETAIN            = 8
 	JOB_CONTROL_RELEASE           = 9
+
+	HEAP_NO_SERIALIZE        = 0x1
+	HEAP_GENERATE_EXCEPTIONS = 0x4
+	HEAP_ZERO_MEMORY         = 0x8
 )
 
-var ErrNoNotification = errors.New("no notification information")
+var (
+	ErrNoMem          = errors.New("memory allocation failed")
+	ErrNoNotification = errors.New("no notification information")
+	processHeap       syscall.Handle
+)
+
+func init() {
+	var err error
+	processHeap, err = GetProcessHeap()
+	if err != nil {
+		panic(err)
+	}
+}
 
 //sys	GetDefaultPrinter(buf *uint16, bufN *uint32) (err error) = winspool.GetDefaultPrinterW
 //sys	ClosePrinter(h syscall.Handle) (err error) = winspool.ClosePrinter
@@ -245,6 +261,9 @@ var ErrNoNotification = errors.New("no notification information")
 //sys   FindNextPrinterChangeNotification(h syscall.Handle, cause *uint16, options *PRINTER_NOTIFY_OPTIONS, info **PRINTER_NOTIFY_INFO) (err error) = winspool.FindNextPrinterChangeNotification
 //sys   FindClosePrinterChangeNotification(h syscall.Handle) (err error) = winspool.FindClosePrinterChangeNotification
 //sys   FreePrinterNotifyInfo(info *PRINTER_NOTIFY_INFO) (err error) = winspool.FreePrinterNotifyInfo
+//sys   GetProcessHeap() (h syscall.Handle, err error) = kernel32.GetProcessHeap
+//sys   HeapAlloc(h syscall.Handle, flags uint32, size uint) (p unsafe.Pointer) = kernel32.HeapAlloc
+//sys   HeapFree(h syscall.Handle, flags uint32, p unsafe.Pointer) (err error) = kernel32.HeapFree
 
 func Default() (string, error) {
 	b := make([]uint16, 3)
@@ -267,19 +286,28 @@ func Default() (string, error) {
 func ReadNames() ([]string, error) {
 	const flags = PRINTER_ENUM_LOCAL | PRINTER_ENUM_CONNECTIONS
 	var needed, returned uint32
-	buf := make([]byte, 1)
-	err := EnumPrinters(flags, nil, printerInfoLevel, &buf[0], uint32(len(buf)), &needed, &returned)
-	if err != nil {
+	var bufsize uint32 = 1024 // 1KB initial attempt
+	var buf unsafe.Pointer
+	for {
+		buf = HeapAlloc(processHeap, HEAP_ZERO_MEMORY, uint(bufsize))
+		if buf == nil {
+			return nil, ErrNoMem
+		}
+		err := EnumPrinters(flags, nil, printerInfoLevel, (*byte)(buf), bufsize, &needed, &returned)
+		if err == nil {
+			break
+		}
 		if err != syscall.ERROR_INSUFFICIENT_BUFFER {
 			return nil, err
 		}
-		buf = make([]byte, needed)
-		err = EnumPrinters(flags, nil, printerInfoLevel, &buf[0], uint32(len(buf)), &needed, &returned)
-		if err != nil {
+		if needed <= bufsize {
 			return nil, err
 		}
+		HeapFree(processHeap, 0, buf)
+		bufsize = needed
 	}
-	ps := (*[1024]PRINTER_INFO_5)(unsafe.Pointer(&buf[0]))[:returned:returned]
+	defer HeapFree(processHeap, 0, buf)
+	ps := (*[1024]PRINTER_INFO_5)(buf)[:returned:returned]
 	names := make([]string, 0, returned)
 	for _, p := range ps {
 		names = append(names, windows.UTF16PtrToString(p.PrinterName))
@@ -464,25 +492,33 @@ func (j *JOB_INFO_4) ToJobInfo() *JobInfo {
 // Jobs returns information about all print jobs on this printer
 func (p *Printer) Jobs() ([]JobInfo, error) {
 	var bytesNeeded, jobsReturned uint32
-	buf := make([]byte, 1)
+	var bufsize uint32 = 10 * 1024 // 10KB initial attempt
+	var buf unsafe.Pointer
 	for {
-		err := EnumJobs(p.h, 0, 255, jobInfoLevel, &buf[0], uint32(len(buf)), &bytesNeeded, &jobsReturned)
+		buf = HeapAlloc(processHeap, HEAP_ZERO_MEMORY, uint(bufsize))
+		if buf == nil {
+			return nil, ErrNoMem
+		}
+		err := EnumJobs(p.h, 0, 255, jobInfoLevel, (*byte)(buf), bufsize, &bytesNeeded, &jobsReturned)
 		if err == nil {
 			break
 		}
 		if err != syscall.ERROR_INSUFFICIENT_BUFFER {
 			return nil, err
 		}
-		if bytesNeeded <= uint32(len(buf)) {
+		if bytesNeeded <= bufsize {
 			return nil, err
 		}
-		buf = make([]byte, bytesNeeded)
+		HeapFree(processHeap, 0, buf)
+		bufsize = bytesNeeded
 	}
+
+	defer HeapFree(processHeap, 0, buf)
 	if jobsReturned <= 0 {
 		return nil, nil
 	}
 	pjs := make([]JobInfo, 0, jobsReturned)
-	ji := (*[2048]JOB_INFO_4)(unsafe.Pointer(&buf[0]))[:jobsReturned:jobsReturned]
+	ji := (*[256]JOB_INFO_4)(buf)[:jobsReturned:jobsReturned]
 	for _, j := range ji {
 		pjs = append(pjs, *j.ToJobInfo())
 	}
@@ -491,22 +527,29 @@ func (p *Printer) Jobs() ([]JobInfo, error) {
 
 func (p *Printer) Job(jobId uint32) (*JobInfo, error) {
 	var bytesNeeded uint32
-	buf := make([]byte, 1024)
+	var bufsize uint32 = 1024 // 1KB initial attempt
+	var buf unsafe.Pointer
 	for {
-		err := GetJob(p.h, jobId, jobInfoLevel, &buf[0], uint32(len(buf)), &bytesNeeded)
+		buf = HeapAlloc(processHeap, HEAP_ZERO_MEMORY, uint(bufsize))
+		if buf == nil {
+			return nil, ErrNoMem
+		}
+		err := GetJob(p.h, jobId, jobInfoLevel, (*byte)(buf), bufsize, &bytesNeeded)
 		if err == nil {
 			break
 		}
 		if err != syscall.ERROR_INSUFFICIENT_BUFFER {
 			return nil, err
 		}
-		if bytesNeeded <= uint32(len(buf)) {
+		if bytesNeeded <= bufsize {
 			return nil, err
 		}
-		buf = make([]byte, bytesNeeded)
+		HeapFree(processHeap, 0, buf)
+		bufsize = bytesNeeded
 	}
 
-	ji := (*JOB_INFO_4)(unsafe.Pointer(&buf[0]))
+	defer HeapFree(processHeap, 0, buf)
+	ji := (*JOB_INFO_4)(buf)
 	return ji.ToJobInfo(), nil
 }
 
@@ -521,21 +564,29 @@ func (p *Printer) SetJob(jobID uint32, jobInfo *JobInfo, command uint32) error {
 // DriverInfo returns information about a printer's driver.
 func (p *Printer) DriverInfo() (*DriverInfo, error) {
 	var needed uint32
-	b := make([]byte, 1024*10)
+	var bufsize uint32 = 10 * 1024 // 10KB initial attempt
+	var buf unsafe.Pointer
 	for {
-		err := GetPrinterDriver(p.h, nil, 8, &b[0], uint32(len(b)), &needed)
+		buf = HeapAlloc(processHeap, HEAP_ZERO_MEMORY, uint(bufsize))
+		if buf == nil {
+			return nil, ErrNoMem
+		}
+		err := GetPrinterDriver(p.h, nil, 8, (*byte)(buf), bufsize, &needed)
 		if err == nil {
 			break
 		}
 		if err != syscall.ERROR_INSUFFICIENT_BUFFER {
 			return nil, err
 		}
-		if needed <= uint32(len(b)) {
+		if needed <= bufsize {
 			return nil, err
 		}
-		b = make([]byte, needed)
+		HeapFree(processHeap, 0, buf)
+		bufsize = needed
 	}
-	di := (*DRIVER_INFO_8)(unsafe.Pointer(&b[0]))
+
+	defer HeapFree(processHeap, 0, buf)
+	di := (*DRIVER_INFO_8)(buf)
 	return &DriverInfo{
 		Attributes:  di.PrinterDriverAttributes,
 		Name:        windows.UTF16PtrToString(di.Name),
@@ -547,21 +598,29 @@ func (p *Printer) DriverInfo() (*DriverInfo, error) {
 // PrinterInfo returns information about a printer
 func (p *Printer) PrinterInfo() (*Info, error) {
 	var needed uint32
-	b := make([]byte, 1024*10)
+	var bufsize uint32 = 1024 // 1KB initial attempt
+	var buf unsafe.Pointer
 	for {
-		err := GetPrinter(p.h, 5, &b[0], uint32(len(b)), &needed)
+		buf = HeapAlloc(processHeap, HEAP_ZERO_MEMORY, uint(bufsize))
+		if buf == nil {
+			return nil, ErrNoMem
+		}
+		err := GetPrinter(p.h, 5, (*byte)(buf), bufsize, &needed)
 		if err == nil {
 			break
 		}
 		if err != syscall.ERROR_INSUFFICIENT_BUFFER {
 			return nil, err
 		}
-		if needed <= uint32(len(b)) {
+		if needed <= bufsize {
 			return nil, err
 		}
-		b = make([]byte, needed)
+		HeapFree(processHeap, 0, buf)
+		bufsize = needed
 	}
-	pi := (*PRINTER_INFO_5)(unsafe.Pointer(&b[0]))
+
+	defer HeapFree(processHeap, 0, buf)
+	pi := (*PRINTER_INFO_5)(buf)
 	return &Info{
 		PrinterName:              windows.UTF16PtrToString(pi.PrinterName),
 		PortName:                 windows.UTF16PtrToString(pi.PortName),
