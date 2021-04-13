@@ -223,6 +223,8 @@ const (
 	JOB_CONTROL_LAST_PAGE_EJECTED = 7
 	JOB_CONTROL_RETAIN            = 8
 	JOB_CONTROL_RELEASE           = 9
+
+	JOB_POSITION_UNSPECIFIED = 0
 )
 
 var ErrNoNotification = errors.New("no notification information")
@@ -338,6 +340,25 @@ type JobInfo struct {
 	Time            time.Duration // the total time, in milliseconds, that has elapsed since the job began printing
 	PagesPrinted    uint32        // the number of pages that have printed. This value may be zero if the print job does not contain page delimiting information
 	Submitted       time.Time     // the time when the job was submitted
+}
+
+func (j *JobInfo) toJobInfo4() *JOB_INFO_4 {
+	// The following members of a JOB_INFO_1, JOB_INFO_2, or JOB_INFO_4 structure are ignored on a call to SetJob: JobId, pPrinterName, pMachineName, pUserName, pDrivername, Size, Submitted, Time, and TotalPages.
+	// So not implementing these in JobInfo -> JOB_INFO_4 conversion
+	return &JOB_INFO_4{
+		Document:       stringToUTF16Ptr(j.DocumentName),
+		NotifyName:     stringToUTF16Ptr(j.NotifyName),
+		DataType:       stringToUTF16Ptr(j.DataType),
+		PrintProcessor: stringToUTF16Ptr(j.PrintProcessor),
+		Parameters:     stringToUTF16Ptr(j.Parameters),
+		Status:         stringToUTF16Ptr(j.Status),
+		StatusCode:     j.StatusCode,
+		Priority:       j.Priority,
+		Position:       j.Position,
+		StartTime:      j.StartTime,
+		UntilTime:      j.UntilTime,
+		PagesPrinted:   j.PagesPrinted,
+	}
 }
 
 // PRINTER_INFO_5 as a Golang struct
@@ -512,7 +533,7 @@ func (p *Printer) Job(jobId uint32) (*JobInfo, error) {
 
 func (p *Printer) SetJob(jobID uint32, jobInfo *JobInfo, command uint32) error {
 	if jobInfo != nil {
-		return errors.New("Not implemented JobInfo -> JOB_INFO_*")
+		return SetJob(p.h, jobID, jobInfoLevel, (*byte)(unsafe.Pointer(jobInfo.toJobInfo4())), command)
 	}
 
 	return SetJob(p.h, jobID, 0, nil, command)
