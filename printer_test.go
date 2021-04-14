@@ -22,10 +22,11 @@ func TestPrinter(t *testing.T) {
 	}
 	defer p.Close()
 
-	err = p.StartDocument("my document", "my_document", "RAW")
+	docID, err := p.StartDocument("my document", "my_document", "RAW")
 	if err != nil {
 		t.Fatalf("StartDocument failed: %v", err)
 	}
+	t.Log("Doc ID", docID)
 	defer p.EndDocument()
 	err = p.StartPage()
 	if err != nil {
