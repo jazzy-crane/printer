@@ -232,7 +232,7 @@ var ErrNoNotification = errors.New("no notification information")
 //sys	GetDefaultPrinter(buf *uint16, bufN *uint32) (err error) = winspool.GetDefaultPrinterW
 //sys	ClosePrinter(h syscall.Handle) (err error) = winspool.ClosePrinter
 //sys	OpenPrinter(name *uint16, h *syscall.Handle, defaults uintptr) (err error) = winspool.OpenPrinterW
-//sys	StartDocPrinter(h syscall.Handle, level uint32, docinfo *DOC_INFO_1) (err error) = winspool.StartDocPrinterW
+//sys	StartDocPrinter(h syscall.Handle, level uint32, docinfo *DOC_INFO_1) (rtn uint32, err error) = winspool.StartDocPrinterW
 //sys	EndDocPrinter(h syscall.Handle) (err error) = winspool.EndDocPrinter
 //sys	WritePrinter(h syscall.Handle, buf *byte, bufN uint32, written *uint32) (err error) = winspool.WritePrinter
 //sys	StartPagePrinter(h syscall.Handle) (err error) = winspool.StartPagePrinter
@@ -602,7 +602,8 @@ func stringToUTF16Ptr(s string) *uint16 {
 
 // StartDocument wraps StartDocPrinter windows API call
 // Empty strings translate to NULL arguments in DOC_INFO_1
-func (p *Printer) StartDocument(name, outputFile, datatype string) error {
+// returns job id of new job, if no error
+func (p *Printer) StartDocument(name, outputFile, datatype string) (uint32, error) {
 	d := DOC_INFO_1{
 		DocName:    stringToUTF16Ptr(name),
 		OutputFile: stringToUTF16Ptr(outputFile),
@@ -613,10 +614,11 @@ func (p *Printer) StartDocument(name, outputFile, datatype string) error {
 
 // StartRawDocument calls StartDocument and passes either "RAW" or "XPS_PASS"
 // as a document type, depending if printer driver is XPS-based or not.
-func (p *Printer) StartRawDocument(name, outputFile string) error {
+// returns job id of new job, if no error
+func (p *Printer) StartRawDocument(name, outputFile string) (uint32, error) {
 	di, err := p.DriverInfo()
 	if err != nil {
-		return err
+		return 0, err
 	}
 	// See https://support.microsoft.com/en-us/help/2779300/v4-print-drivers-using-raw-mode-to-send-pcl-postscript-directly-to-the
 	// for details.

@@ -19,6 +19,7 @@ const (
 
 var (
 	errERROR_IO_PENDING error = syscall.Errno(errnoERROR_IO_PENDING)
+	errERROR_EINVAL     error = syscall.EINVAL
 )
 
 // errnoErr returns common boxed Errno values, to prevent
@@ -26,7 +27,7 @@ var (
 func errnoErr(e syscall.Errno) error {
 	switch e {
 	case 0:
-		return nil
+		return errERROR_EINVAL
 	case errnoERROR_IO_PENDING:
 		return errERROR_IO_PENDING
 	}
@@ -39,70 +40,30 @@ func errnoErr(e syscall.Errno) error {
 var (
 	modwinspool = windows.NewLazySystemDLL("winspool.drv")
 
-	procGetDefaultPrinterW                 = modwinspool.NewProc("GetDefaultPrinterW")
 	procClosePrinter                       = modwinspool.NewProc("ClosePrinter")
-	procOpenPrinterW                       = modwinspool.NewProc("OpenPrinterW")
-	procStartDocPrinterW                   = modwinspool.NewProc("StartDocPrinterW")
 	procEndDocPrinter                      = modwinspool.NewProc("EndDocPrinter")
-	procWritePrinter                       = modwinspool.NewProc("WritePrinter")
-	procStartPagePrinter                   = modwinspool.NewProc("StartPagePrinter")
 	procEndPagePrinter                     = modwinspool.NewProc("EndPagePrinter")
-	procEnumPrintersW                      = modwinspool.NewProc("EnumPrintersW")
-	procGetPrinterW                        = modwinspool.NewProc("GetPrinterW")
-	procGetPrinterDriverW                  = modwinspool.NewProc("GetPrinterDriverW")
 	procEnumJobsW                          = modwinspool.NewProc("EnumJobsW")
-	procGetJobW                            = modwinspool.NewProc("GetJobW")
-	procSetJobW                            = modwinspool.NewProc("SetJobW")
+	procEnumPrintersW                      = modwinspool.NewProc("EnumPrintersW")
+	procFindClosePrinterChangeNotification = modwinspool.NewProc("FindClosePrinterChangeNotification")
 	procFindFirstPrinterChangeNotification = modwinspool.NewProc("FindFirstPrinterChangeNotification")
 	procFindNextPrinterChangeNotification  = modwinspool.NewProc("FindNextPrinterChangeNotification")
-	procFindClosePrinterChangeNotification = modwinspool.NewProc("FindClosePrinterChangeNotification")
 	procFreePrinterNotifyInfo              = modwinspool.NewProc("FreePrinterNotifyInfo")
+	procGetDefaultPrinterW                 = modwinspool.NewProc("GetDefaultPrinterW")
+	procGetJobW                            = modwinspool.NewProc("GetJobW")
+	procGetPrinterDriverW                  = modwinspool.NewProc("GetPrinterDriverW")
+	procGetPrinterW                        = modwinspool.NewProc("GetPrinterW")
+	procOpenPrinterW                       = modwinspool.NewProc("OpenPrinterW")
+	procSetJobW                            = modwinspool.NewProc("SetJobW")
+	procStartDocPrinterW                   = modwinspool.NewProc("StartDocPrinterW")
+	procStartPagePrinter                   = modwinspool.NewProc("StartPagePrinter")
+	procWritePrinter                       = modwinspool.NewProc("WritePrinter")
 )
-
-func GetDefaultPrinter(buf *uint16, bufN *uint32) (err error) {
-	r1, _, e1 := syscall.Syscall(procGetDefaultPrinterW.Addr(), 2, uintptr(unsafe.Pointer(buf)), uintptr(unsafe.Pointer(bufN)), 0)
-	if r1 == 0 {
-		if e1 != 0 {
-			err = errnoErr(e1)
-		} else {
-			err = syscall.EINVAL
-		}
-	}
-	return
-}
 
 func ClosePrinter(h syscall.Handle) (err error) {
 	r1, _, e1 := syscall.Syscall(procClosePrinter.Addr(), 1, uintptr(h), 0, 0)
 	if r1 == 0 {
-		if e1 != 0 {
-			err = errnoErr(e1)
-		} else {
-			err = syscall.EINVAL
-		}
-	}
-	return
-}
-
-func OpenPrinter(name *uint16, h *syscall.Handle, defaults uintptr) (err error) {
-	r1, _, e1 := syscall.Syscall(procOpenPrinterW.Addr(), 3, uintptr(unsafe.Pointer(name)), uintptr(unsafe.Pointer(h)), uintptr(defaults))
-	if r1 == 0 {
-		if e1 != 0 {
-			err = errnoErr(e1)
-		} else {
-			err = syscall.EINVAL
-		}
-	}
-	return
-}
-
-func StartDocPrinter(h syscall.Handle, level uint32, docinfo *DOC_INFO_1) (err error) {
-	r1, _, e1 := syscall.Syscall(procStartDocPrinterW.Addr(), 3, uintptr(h), uintptr(level), uintptr(unsafe.Pointer(docinfo)))
-	if r1 == 0 {
-		if e1 != 0 {
-			err = errnoErr(e1)
-		} else {
-			err = syscall.EINVAL
-		}
+		err = errnoErr(e1)
 	}
 	return
 }
@@ -110,35 +71,7 @@ func StartDocPrinter(h syscall.Handle, level uint32, docinfo *DOC_INFO_1) (err e
 func EndDocPrinter(h syscall.Handle) (err error) {
 	r1, _, e1 := syscall.Syscall(procEndDocPrinter.Addr(), 1, uintptr(h), 0, 0)
 	if r1 == 0 {
-		if e1 != 0 {
-			err = errnoErr(e1)
-		} else {
-			err = syscall.EINVAL
-		}
-	}
-	return
-}
-
-func WritePrinter(h syscall.Handle, buf *byte, bufN uint32, written *uint32) (err error) {
-	r1, _, e1 := syscall.Syscall6(procWritePrinter.Addr(), 4, uintptr(h), uintptr(unsafe.Pointer(buf)), uintptr(bufN), uintptr(unsafe.Pointer(written)), 0, 0)
-	if r1 == 0 {
-		if e1 != 0 {
-			err = errnoErr(e1)
-		} else {
-			err = syscall.EINVAL
-		}
-	}
-	return
-}
-
-func StartPagePrinter(h syscall.Handle) (err error) {
-	r1, _, e1 := syscall.Syscall(procStartPagePrinter.Addr(), 1, uintptr(h), 0, 0)
-	if r1 == 0 {
-		if e1 != 0 {
-			err = errnoErr(e1)
-		} else {
-			err = syscall.EINVAL
-		}
+		err = errnoErr(e1)
 	}
 	return
 }
@@ -146,47 +79,7 @@ func StartPagePrinter(h syscall.Handle) (err error) {
 func EndPagePrinter(h syscall.Handle) (err error) {
 	r1, _, e1 := syscall.Syscall(procEndPagePrinter.Addr(), 1, uintptr(h), 0, 0)
 	if r1 == 0 {
-		if e1 != 0 {
-			err = errnoErr(e1)
-		} else {
-			err = syscall.EINVAL
-		}
-	}
-	return
-}
-
-func EnumPrinters(flags uint32, name *uint16, level uint32, buf *byte, bufN uint32, needed *uint32, returned *uint32) (err error) {
-	r1, _, e1 := syscall.Syscall9(procEnumPrintersW.Addr(), 7, uintptr(flags), uintptr(unsafe.Pointer(name)), uintptr(level), uintptr(unsafe.Pointer(buf)), uintptr(bufN), uintptr(unsafe.Pointer(needed)), uintptr(unsafe.Pointer(returned)), 0, 0)
-	if r1 == 0 {
-		if e1 != 0 {
-			err = errnoErr(e1)
-		} else {
-			err = syscall.EINVAL
-		}
-	}
-	return
-}
-
-func GetPrinter(h syscall.Handle, level uint32, buf *byte, bufN uint32, needed *uint32) (err error) {
-	r1, _, e1 := syscall.Syscall6(procGetPrinterW.Addr(), 5, uintptr(h), uintptr(level), uintptr(unsafe.Pointer(buf)), uintptr(bufN), uintptr(unsafe.Pointer(needed)), 0)
-	if r1 == 0 {
-		if e1 != 0 {
-			err = errnoErr(e1)
-		} else {
-			err = syscall.EINVAL
-		}
-	}
-	return
-}
-
-func GetPrinterDriver(h syscall.Handle, env *uint16, level uint32, di *byte, n uint32, needed *uint32) (err error) {
-	r1, _, e1 := syscall.Syscall6(procGetPrinterDriverW.Addr(), 6, uintptr(h), uintptr(unsafe.Pointer(env)), uintptr(level), uintptr(unsafe.Pointer(di)), uintptr(n), uintptr(unsafe.Pointer(needed)))
-	if r1 == 0 {
-		if e1 != 0 {
-			err = errnoErr(e1)
-		} else {
-			err = syscall.EINVAL
-		}
+		err = errnoErr(e1)
 	}
 	return
 }
@@ -194,35 +87,23 @@ func GetPrinterDriver(h syscall.Handle, env *uint16, level uint32, di *byte, n u
 func EnumJobs(h syscall.Handle, firstJob uint32, noJobs uint32, level uint32, buf *byte, bufN uint32, bytesNeeded *uint32, jobsReturned *uint32) (err error) {
 	r1, _, e1 := syscall.Syscall9(procEnumJobsW.Addr(), 8, uintptr(h), uintptr(firstJob), uintptr(noJobs), uintptr(level), uintptr(unsafe.Pointer(buf)), uintptr(bufN), uintptr(unsafe.Pointer(bytesNeeded)), uintptr(unsafe.Pointer(jobsReturned)), 0)
 	if r1 == 0 {
-		if e1 != 0 {
-			err = errnoErr(e1)
-		} else {
-			err = syscall.EINVAL
-		}
+		err = errnoErr(e1)
 	}
 	return
 }
 
-func GetJob(h syscall.Handle, jobId uint32, level uint32, buf *byte, bufN uint32, bytesNeeded *uint32) (err error) {
-	r1, _, e1 := syscall.Syscall6(procGetJobW.Addr(), 6, uintptr(h), uintptr(jobId), uintptr(level), uintptr(unsafe.Pointer(buf)), uintptr(bufN), uintptr(unsafe.Pointer(bytesNeeded)))
+func EnumPrinters(flags uint32, name *uint16, level uint32, buf *byte, bufN uint32, needed *uint32, returned *uint32) (err error) {
+	r1, _, e1 := syscall.Syscall9(procEnumPrintersW.Addr(), 7, uintptr(flags), uintptr(unsafe.Pointer(name)), uintptr(level), uintptr(unsafe.Pointer(buf)), uintptr(bufN), uintptr(unsafe.Pointer(needed)), uintptr(unsafe.Pointer(returned)), 0, 0)
 	if r1 == 0 {
-		if e1 != 0 {
-			err = errnoErr(e1)
-		} else {
-			err = syscall.EINVAL
-		}
+		err = errnoErr(e1)
 	}
 	return
 }
 
-func SetJob(h syscall.Handle, jobId uint32, level uint32, buf *byte, command uint32) (err error) {
-	r1, _, e1 := syscall.Syscall6(procSetJobW.Addr(), 5, uintptr(h), uintptr(jobId), uintptr(level), uintptr(unsafe.Pointer(buf)), uintptr(command), 0)
+func FindClosePrinterChangeNotification(h syscall.Handle) (err error) {
+	r1, _, e1 := syscall.Syscall(procFindClosePrinterChangeNotification.Addr(), 1, uintptr(h), 0, 0)
 	if r1 == 0 {
-		if e1 != 0 {
-			err = errnoErr(e1)
-		} else {
-			err = syscall.EINVAL
-		}
+		err = errnoErr(e1)
 	}
 	return
 }
@@ -231,11 +112,7 @@ func FindFirstPrinterChangeNotification(h syscall.Handle, filter uint32, options
 	r0, _, e1 := syscall.Syscall6(procFindFirstPrinterChangeNotification.Addr(), 4, uintptr(h), uintptr(filter), uintptr(options), uintptr(unsafe.Pointer(notifyOptions)), 0, 0)
 	rtn = syscall.Handle(r0)
 	if rtn == 0 {
-		if e1 != 0 {
-			err = errnoErr(e1)
-		} else {
-			err = syscall.EINVAL
-		}
+		err = errnoErr(e1)
 	}
 	return
 }
@@ -243,23 +120,7 @@ func FindFirstPrinterChangeNotification(h syscall.Handle, filter uint32, options
 func FindNextPrinterChangeNotification(h syscall.Handle, cause *uint16, options *PRINTER_NOTIFY_OPTIONS, info **PRINTER_NOTIFY_INFO) (err error) {
 	r1, _, e1 := syscall.Syscall6(procFindNextPrinterChangeNotification.Addr(), 4, uintptr(h), uintptr(unsafe.Pointer(cause)), uintptr(unsafe.Pointer(options)), uintptr(unsafe.Pointer(info)), 0, 0)
 	if r1 == 0 {
-		if e1 != 0 {
-			err = errnoErr(e1)
-		} else {
-			err = syscall.EINVAL
-		}
-	}
-	return
-}
-
-func FindClosePrinterChangeNotification(h syscall.Handle) (err error) {
-	r1, _, e1 := syscall.Syscall(procFindClosePrinterChangeNotification.Addr(), 1, uintptr(h), 0, 0)
-	if r1 == 0 {
-		if e1 != 0 {
-			err = errnoErr(e1)
-		} else {
-			err = syscall.EINVAL
-		}
+		err = errnoErr(e1)
 	}
 	return
 }
@@ -267,11 +128,80 @@ func FindClosePrinterChangeNotification(h syscall.Handle) (err error) {
 func FreePrinterNotifyInfo(info *PRINTER_NOTIFY_INFO) (err error) {
 	r1, _, e1 := syscall.Syscall(procFreePrinterNotifyInfo.Addr(), 1, uintptr(unsafe.Pointer(info)), 0, 0)
 	if r1 == 0 {
-		if e1 != 0 {
-			err = errnoErr(e1)
-		} else {
-			err = syscall.EINVAL
-		}
+		err = errnoErr(e1)
+	}
+	return
+}
+
+func GetDefaultPrinter(buf *uint16, bufN *uint32) (err error) {
+	r1, _, e1 := syscall.Syscall(procGetDefaultPrinterW.Addr(), 2, uintptr(unsafe.Pointer(buf)), uintptr(unsafe.Pointer(bufN)), 0)
+	if r1 == 0 {
+		err = errnoErr(e1)
+	}
+	return
+}
+
+func GetJob(h syscall.Handle, jobId uint32, level uint32, buf *byte, bufN uint32, bytesNeeded *uint32) (err error) {
+	r1, _, e1 := syscall.Syscall6(procGetJobW.Addr(), 6, uintptr(h), uintptr(jobId), uintptr(level), uintptr(unsafe.Pointer(buf)), uintptr(bufN), uintptr(unsafe.Pointer(bytesNeeded)))
+	if r1 == 0 {
+		err = errnoErr(e1)
+	}
+	return
+}
+
+func GetPrinterDriver(h syscall.Handle, env *uint16, level uint32, di *byte, n uint32, needed *uint32) (err error) {
+	r1, _, e1 := syscall.Syscall6(procGetPrinterDriverW.Addr(), 6, uintptr(h), uintptr(unsafe.Pointer(env)), uintptr(level), uintptr(unsafe.Pointer(di)), uintptr(n), uintptr(unsafe.Pointer(needed)))
+	if r1 == 0 {
+		err = errnoErr(e1)
+	}
+	return
+}
+
+func GetPrinter(h syscall.Handle, level uint32, buf *byte, bufN uint32, needed *uint32) (err error) {
+	r1, _, e1 := syscall.Syscall6(procGetPrinterW.Addr(), 5, uintptr(h), uintptr(level), uintptr(unsafe.Pointer(buf)), uintptr(bufN), uintptr(unsafe.Pointer(needed)), 0)
+	if r1 == 0 {
+		err = errnoErr(e1)
+	}
+	return
+}
+
+func OpenPrinter(name *uint16, h *syscall.Handle, defaults uintptr) (err error) {
+	r1, _, e1 := syscall.Syscall(procOpenPrinterW.Addr(), 3, uintptr(unsafe.Pointer(name)), uintptr(unsafe.Pointer(h)), uintptr(defaults))
+	if r1 == 0 {
+		err = errnoErr(e1)
+	}
+	return
+}
+
+func SetJob(h syscall.Handle, jobId uint32, level uint32, buf *byte, command uint32) (err error) {
+	r1, _, e1 := syscall.Syscall6(procSetJobW.Addr(), 5, uintptr(h), uintptr(jobId), uintptr(level), uintptr(unsafe.Pointer(buf)), uintptr(command), 0)
+	if r1 == 0 {
+		err = errnoErr(e1)
+	}
+	return
+}
+
+func StartDocPrinter(h syscall.Handle, level uint32, docinfo *DOC_INFO_1) (rtn uint32, err error) {
+	r0, _, e1 := syscall.Syscall(procStartDocPrinterW.Addr(), 3, uintptr(h), uintptr(level), uintptr(unsafe.Pointer(docinfo)))
+	rtn = uint32(r0)
+	if rtn == 0 {
+		err = errnoErr(e1)
+	}
+	return
+}
+
+func StartPagePrinter(h syscall.Handle) (err error) {
+	r1, _, e1 := syscall.Syscall(procStartPagePrinter.Addr(), 1, uintptr(h), 0, 0)
+	if r1 == 0 {
+		err = errnoErr(e1)
+	}
+	return
+}
+
+func WritePrinter(h syscall.Handle, buf *byte, bufN uint32, written *uint32) (err error) {
+	r1, _, e1 := syscall.Syscall6(procWritePrinter.Addr(), 4, uintptr(h), uintptr(unsafe.Pointer(buf)), uintptr(bufN), uintptr(unsafe.Pointer(written)), 0, 0)
+	if r1 == 0 {
+		err = errnoErr(e1)
 	}
 	return
 }
